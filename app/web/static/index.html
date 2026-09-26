@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PW136AutoBot</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/app.css?v=17">
+</head>
+<body>
+<header>
+  <div class="brand">PW136<span>AutoBot</span></div>
+  <div class="header-spacer"></div>
+  <div class="run">
+    <label class="chk" title="зони, кольори і пороги розпізнавання"><input type="checkbox" id="techMode"> технічні</label>
+    <label class="chk"><input type="checkbox" id="dryRun"> без клавіш</label>
+    <button id="btnStart" class="primary">Запустити</button>
+    <button id="btnStop" class="danger" disabled>Стоп</button>
+    <span id="runState" class="pill off">зупинено</span>
+  </div>
+</header>
+
+<main>
+  <div class="col">
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Вікна</h2>
+      <div class="spacer"></div>
+      <button id="btnDiscover" class="quiet" title="не чекати автоматичного опитування">знайти зараз</button>
+    </div>
+    <div class="panel-body">
+      <p class="hint">Клієнти гри шукаються самі раз на кілька секунд. Персонажа видно за ніком з екрана —
+        профіль прив'язується до нього, а не до вікна, тому після перезапуску гри все лишається.</p>
+      <div id="windowList" style="display:grid; gap:8px"></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Програма</h2>
+      <div class="spacer"></div>
+    </div>
+    <div class="panel-body">
+      <p class="hint">Усе, що не належить профілю чи персонажу. Зберігається кнопкою «Зберегти».</p>
+      <div id="appSettings" class="pipe-body" style="display:grid; gap:10px; padding:0"></div>
+    </div>
+  </section>
+  </div>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Конструктор</h2>
+      <span id="profileName" class="hint"></span>
+      <div class="spacer"></div>
+      <button id="btnSave" class="primary" disabled>Зберегти</button>
+    </div>
+    <div class="panel-body">
+      <div id="profileBar" class="profile-bar"></div>
+      <p class="hint">Блоки виконуються в порядку залежностей: хто віддає дані — раніше за тих, хто їх читає.</p>
+      <div id="pipelines" style="display:grid; gap:8px"></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>Ручні кнопки</h2></div>
+    <div class="panel-body">
+      <div id="manualButtons" class="manual"></div>
+      <div class="custom-key">
+        <input id="customKey" placeholder="клавіша" value="f5">
+        <input id="customTimes" type="number" min="1" max="50" value="1" title="скільки разів">
+        <input id="customInterval" type="number" min="0" max="10" step="0.1" value="0.3" title="інтервал, с">
+        <button id="btnCustom">Натиснути</button>
+      </div>
+
+      <div class="group"><h3>Екран вікна</h3><div class="line"></div></div>
+      <div class="preview-meta">
+        <label class="chk"><input type="checkbox" id="overlayLoot" checked> квадрат лута</label>
+        <label class="chk"><input type="checkbox" id="autoRefresh"> живий перегляд</label>
+        <div style="flex:1"></div>
+        <button id="btnShot" class="quiet">оновити</button>
+      </div>
+      <div class="preview-meta">
+        <label class="chk"><input type="checkbox" id="calibMode"> калібрувати кліком</label>
+        <select id="calibWhat">
+          <option value="pet_frame">рамка пета</option>
+        </select>
+      </div>
+      <div class="preview-wrap">
+        <img id="preview" alt="" hidden>
+        <div id="previewEmpty" class="empty">кадр завантажується…</div>
+      </div>
+      <div id="lootCheck" class="hint"></div>
+    </div>
+  </section>
+</main>
+
+<div id="toast"></div>
+<script src="/static/app.js?v=17"></script>
+</body>
+</html>

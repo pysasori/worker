@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+
+# IDE / local tooling
+.idea/
+.claude/settings.local.json
+
+# Runtime output
+logs/
+screens/
+
+# Local backups and archives
+config/*.bak-*
+*.zip

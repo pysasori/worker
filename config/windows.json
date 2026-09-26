@@ -1,0 +1,270 @@
+{
+  "profiles": {
+    "pw136_1440x1080": {
+      "client_size": [
+        1440,
+        1080
+      ],
+      "pipelines": [
+        {
+          "type": "death_return",
+          "enabled": true,
+          "config": {
+            "use_flight": true,
+            "flight_key": "9",
+            "climb_to": 0,
+            "travel_timeout": 900,
+            "climb_timeout": 30
+          }
+        },
+        {
+          "type": "pet_heal",
+          "enabled": true,
+          "config": {
+            "heal_key": "f3",
+            "heal_below": 0.5,
+            "cooldown": 3
+          }
+        },
+        {
+          "type": "pet_feed",
+          "enabled": true,
+          "config": {
+            "feed_key": "f8",
+            "feed_below": 0.5,
+            "cooldown": 40,
+            "give_up_after": 8
+          }
+        },
+        {
+          "type": "pet_summon",
+          "enabled": true,
+          "config": {
+            "summon_key": "f7",
+            "cast_time": 5,
+            "cooldown": 8,
+            "confirm_frames": 4,
+            "retry_after": 300,
+            "missing_for": 5,
+            "hold_for": 15
+          }
+        },
+        {
+          "type": "position",
+          "enabled": true,
+          "config": {
+            "read_every": 1,
+            "home_x": 456,
+            "home_y": 674,
+            "warn_away": 14
+          }
+        },
+        {
+          "type": "altitude",
+          "enabled": true,
+          "config": {
+            "read_every": 1
+          }
+        },
+        {
+          "type": "altitude_hold",
+          "enabled": false,
+          "config": {
+            "target": 0,
+            "tolerance": 2,
+            "up_key": "space",
+            "down_key": "z",
+            "interval": 1
+          }
+        },
+        {
+          "type": "return_home",
+          "enabled": true,
+          "config": {
+            "max_distance": 12,
+            "fly": true,
+            "fly_beyond": 40,
+            "fly_height": 55,
+            "point_name": "фарм"
+          }
+        },
+        {
+          "type": "target_search",
+          "enabled": true,
+          "config": {
+            "target_key": "tab",
+            "retarget_delay": 1,
+            "confirm_frames": 2,
+            "min_acquire": 2,
+            "stale_after": 12,
+            "names": {
+              "enabled": false,
+              "allow": [],
+              "deny": [],
+              "min_ratio": 0.75
+            }
+          }
+        },
+        {
+          "type": "heal",
+          "enabled": true,
+          "config": {
+            "heal_key": "f6",
+            "heal_below": 0.85,
+            "cooldown": 10,
+            "panic_below": 0.4
+          }
+        },
+        {
+          "type": "attack",
+          "enabled": true,
+          "config": {
+            "key": "f1",
+            "interval": 3,
+            "stop_below": 0
+          }
+        },
+        {
+          "type": "loot",
+          "enabled": true,
+          "config": {
+            "key": "f2",
+            "max_presses": 5,
+            "interval": 0.4,
+            "corpse_delay": 0.3,
+            "check": {
+              "enabled": true,
+              "size": 420,
+              "offset_x": 0,
+              "offset_y": 0
+            }
+          }
+        },
+        {
+          "type": "repair",
+          "enabled": true,
+          "config": {
+            "every": 3600,
+            "min_interval": 600,
+            "bag_key": "b",
+            "close_key": "esc"
+          }
+        },
+        {
+          "type": "sell",
+          "enabled": true,
+          "config": {
+            "every": 900,
+            "cells": [
+              "4:1",
+              "4:2",
+              "4:3",
+              "4:4",
+              "4:5",
+              "4:6",
+              "4:7",
+              "4:8"
+            ],
+            "hover_delay": 0.4,
+            "step_delay": 1
+          }
+        },
+        {
+          "type": "dialog_guard",
+          "enabled": true,
+          "config": {
+            "close_key": "esc",
+            "cooldown": 3
+          }
+        },
+        {
+          "type": "periodic_keys",
+          "enabled": true,
+          "config": {
+            "keys": {
+              "1": 1.5
+            },
+            "press_on_start": true
+          }
+        }
+      ]
+    }
+  },
+  "windows": [
+    {
+      "name": "main",
+      "profile": "pw136_1440x1080",
+      "match": {
+        "class_name": "ElementClient Window",
+        "process": "ElementClient.exe",
+        "title": null,
+        "index": 0,
+        "hwnd": null
+      },
+      "enabled": true,
+      "poll_interval": 0.06,
+      "overrides": {}
+    }
+  ],
+  "characters": {
+    "CEKXU": {
+      "profile": "pw136_1440x1080",
+      "label": "",
+      "aliases": [],
+      "enabled": true,
+      "poll_interval": 0.06,
+      "overrides": {}
+    },
+    "BroWorker": {
+      "profile": "pw136_1440x1080",
+      "label": "",
+      "aliases": [],
+      "enabled": false,
+      "poll_interval": 0.06,
+      "overrides": {}
+    }
+  },
+  "default_profile": null,
+  "settings": {
+    "autostart": false,
+    "open_browser": true,
+    "scan_interval": 5.0,
+    "guard": true,
+    "guard_every": 15.0,
+    "stall_after": 30.0,
+    "host": "127.0.0.1",
+    "port": 8765,
+    "nick": {
+      "region": {
+        "x": 112,
+        "y": 64,
+        "w": 108,
+        "h": 15
+      },
+      "threshold": 150,
+      "hud": {
+        "name": "hud_wrench.png",
+        "threshold": 0.7,
+        "area": {
+          "x": 120,
+          "y": 0,
+          "w": 180,
+          "h": 40
+        }
+      },
+      "min_length": 2,
+      "max_length": 24,
+      "same_ratio": 0.75,
+      "ocr": {
+        "enabled": true,
+        "engine": "tesseract",
+        "lang": "eng+rus",
+        "psm": 7,
+        "scale": 4,
+        "tesseract_cmd": "C:\\Program Files\\Tesseract-OCR\\tesseract.exe",
+        "tessdata_dir": "F:\\PythonProjects\\Games\\PW\\PW136AutoBot\\models\\tessdata"
+      }
+    }
+  },
+  "migrated_windows": true
+}

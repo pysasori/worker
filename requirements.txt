@@ -1,0 +1,10 @@
+pywin32
+pillow
+pydantic>=2
+pydantic-settings>=2
+fastapi
+uvicorn[standard]
+pytesseract
+rapidocr-onnxruntime
+pytest
+httpx
