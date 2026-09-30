@@ -504,7 +504,17 @@ class BotService:
         return {"what": what, "title": title, "x": int(x), "y": int(y)}
 
     def _loot_config(self, name: str) -> LootConfig | None:
-        window = self._window_cfg(name)
+        """
+        None означає «нема кому показувати квадрат лута»: або нік іще не закріплено
+        (вікно видно лише як 'hwnd:N', персонажа в конфізі нема), або в профілі
+        вимкнено блок «Збір лута». Раніше перший випадок валив запит кадру цілком —
+        квадрат лута в прев'ю увімкнений за замовчуванням, тож будь-яке ще не
+        закріплене вікно ламало превʼю одразу при відкритті сторінки.
+        """
+        try:
+            window = self._window_cfg(name)
+        except BotError:
+            return None
         for spec in self.config.specs_for(window):
             if spec.type == "loot":
                 return LootConfig(**spec.config)

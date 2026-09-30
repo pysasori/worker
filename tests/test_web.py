@@ -132,3 +132,39 @@ def test_log_endpoint_filters_by_level(client):
     assert all(e["level"] == "WARNING" for e in warn_only)
     assert any("тривожна" in e["message"] for e in warn_only)
     assert not any("звичайна" in e["message"] for e in warn_only)
+
+
+def test_loot_config_is_none_for_an_unknown_window(tmp_path):
+    """
+    Живий випадок: вікно ще без закріпленого ніка («hwnd:N») — персонажа в конфізі
+    нема. Раніше _loot_config тут падав з BotError, і той валив увесь запит кадру:
+    квадрат лута увімкнений у прев'ю за замовчуванням, тому щойно відкрита сторінка
+    одразу показувала «вікно гри недоступне» для будь-якого свіжого клієнта.
+    """
+    import json
+
+    from app.web.service import BotService
+
+    raw = {"profiles": {"p": {"pipelines": [{"type": "loot", "enabled": True, "config": {}}]}},
+          "windows": []}
+    path = tmp_path / "windows.json"
+    path.write_text(json.dumps(raw, ensure_ascii=False), encoding="utf-8")
+    svc = BotService(path)
+    assert svc._loot_config("hwnd:12345") is None
+
+
+def test_loot_overlay_leaves_the_frame_untouched_for_an_unknown_window(tmp_path):
+    import json
+
+    from PIL import Image
+
+    from app.web.service import BotService
+
+    raw = {"profiles": {"p": {"pipelines": [{"type": "loot", "enabled": True, "config": {}}]}},
+          "windows": []}
+    path = tmp_path / "windows.json"
+    path.write_text(json.dumps(raw, ensure_ascii=False), encoding="utf-8")
+    svc = BotService(path)
+    frame = Image.new("RGB", (40, 30), (1, 2, 3))
+    out = svc._draw_loot_overlay("hwnd:12345", frame)
+    assert list(out.getdata()) == list(frame.getdata())
