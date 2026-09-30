@@ -272,25 +272,25 @@ def test_broken_gear_does_not_wait_an_hour(real_repair_cfg):
     """Зламане (червоне) лагодимо швидко — така річ не працює взагалі."""
     pipe, shared = RepairPipeline(real_repair_cfg), {}
     broken = broken_frame()
-    pipe.process(ctx(broken, 0.0, shared))                      # відлік пішов
-    quiet = pipe.process(ctx(broken, real_repair_cfg.min_interval - 5, shared))
-    assert quiet.actions == [], "занадто рано навіть за поломкою"
-    pipe.process(ctx(broken, real_repair_cfg.min_interval + 1, shared))
+    pipe.process(ctx(broken, 0.0, shared))                      # підтвердження почалось
+    quiet = pipe.process(ctx(broken, real_repair_cfg.confirm_damage - 0.1, shared))
+    assert quiet.actions == [], "миттєвий червоний спалах ще не є поломкою"
+    pipe.process(ctx(broken, real_repair_cfg.confirm_damage + 0.1, shared))
     assert pipe.state is not RepairState.IDLE
     assert busy_reasons(shared) == {"repair"}
 
 
-def test_worn_gear_waits_for_its_hour(real_repair_cfg):
+def test_worn_gear_waits_for_min_interval(real_repair_cfg):
     """
-    Жовтий знос з'являється в бою за лічені хвилини. Поки він прискорював ремонт,
-    бот бігав у Лавку щотри хвилини — тепер зношене чекає свою годину.
+    Жовтий знос не вимагає аварійного ремонту, тому для нього лишається
+    десятихвилинний захист від надто частих походів у Лавку.
     """
     pipe, shared = RepairPipeline(real_repair_cfg), {}
     worn = damaged_frame()
     pipe.process(ctx(worn, 0.0, shared))
-    assert pipe.process(ctx(worn, real_repair_cfg.min_interval + 1, shared)).actions == []
+    assert pipe.process(ctx(worn, real_repair_cfg.min_interval - 1, shared)).actions == []
     assert pipe.state is RepairState.IDLE
-    res = pipe.process(ctx(worn, real_repair_cfg.every + 1, shared))
+    res = pipe.process(ctx(worn, real_repair_cfg.min_interval + 1, shared))
     assert keys(res) == [real_repair_cfg.bag_key]
 
 
@@ -305,6 +305,25 @@ def test_no_damage_means_wait_for_the_timer(real_repair_cfg):
     assert pipe.state is not RepairState.IDLE, "за таймером ремонт усе одно буває"
     assert busy_reasons(shared) == {"repair"}
     assert any("час ремонту" in e for e in res.events)
+
+
+def test_due_repair_blocks_new_target_after_current_fight(cfg):
+    """Після бою резервуємо паузу для ремонту, а не беремо нового моба без кінця."""
+    cfg = cfg.model_copy(update={"idle_before": 2.0})
+    pipe, shared = RepairPipeline(cfg), {}
+    clean = frame_with()
+    pipe.process(ctx(clean, 0.0, shared, target=True))
+
+    fighting = pipe.process(ctx(clean, cfg.every + 0.1, shared, target=True))
+    assert "добиваю ціль" in fighting.status
+    assert busy_reasons(shared) == set(), "поточну ціль треба дати добити"
+
+    waiting = pipe.process(ctx(clean, cfg.every + 0.2, shared, target=False))
+    assert "чекаю спокою" in waiting.status
+    assert busy_reasons(shared) == {"repair"}, "пошук не має взяти наступного моба"
+
+    started = pipe.process(ctx(clean, cfg.every + 2.3, shared, target=False))
+    assert keys(started) == [cfg.bag_key]
 
 
 # ---- пошук іконки «Лавка» -----------------------------------------------------
@@ -467,11 +486,10 @@ def test_damage_numbers_do_not_trigger_repair(real_repair_cfg):
 def test_lasting_red_icon_still_starts_repair(real_repair_cfg):
     pipe, shared = RepairPipeline(real_repair_cfg), {}
     broken = broken_frame()
-    t = real_repair_cfg.min_interval + 1
     pipe.process(ctx(broken, 0.0, shared))
-    for i in range(6):                        # іконка висить і не зникає
-        res = pipe.process(ctx(broken, t + i * 2, shared))
-    assert pipe.state is not RepairState.IDLE
+    pipe.process(ctx(broken, 2.0, shared))
+    pipe.process(ctx(broken, 4.1, shared))     # іконка висить і не зникає
+    assert pipe.state is not RepairState.IDLE, "зламана річ ремонтується без 10-хвилинного очікування"
 
 
 

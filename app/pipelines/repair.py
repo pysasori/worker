@@ -66,8 +66,9 @@ class RepairConfig(PipelineConfig):
         ], title="Ознака поломки (червона)", json_schema_extra={"tech": True},
         description="зламана річ не працює зовсім, тому її лагодимо, не чекаючи години")
     min_interval: float = Field(default=600.0, ge=0, title="За ознакою зносу не частіше ніж, с",
-                                description="скільки чекати між ремонтами, коли справа видно знос "
-                                            "або поломку. Раз на годину — то запасний таймер нижче")
+                                description="скільки чекати між ремонтами, коли справа видно звичайний знос. "
+                                            "Червона поломка ремонтується одразу після поточної цілі. "
+                                            "Раз на годину — то запасний таймер нижче")
     useless_pause: float = Field(default=1800.0, ge=0, title="Пауза, якщо ремонт не допоміг, с",
                                  json_schema_extra={"tech": True},
                                  description="ознака зносу лишилась після ремонту — найчастіше це "
@@ -137,7 +138,8 @@ class RepairPipeline(Pipeline):
         self.check_broken_at: float | None = None
         self.retry_click_at = 0.0                 # коли повторити клік, якщо вікно не з'явилось
         self.retries_left = 0
-        self.broken_since: float | None = None    # відколи безперервно видно поломку
+        self.worn_since: float | None = None      # відколи безперервно видно звичайний знос
+        self.broken_since: float | None = None    # відколи безперервно видно червону поломку
         self.state = RepairState.IDLE
         self.close_tries = 0
         self.last_repair: float | None = None   # None = ще не ремонтували
@@ -157,12 +159,18 @@ class RepairPipeline(Pipeline):
         """
         cfg: RepairConfig = self.config
         if self.last_repair is None:
-            self.last_repair = ctx.now      # відлік від старту, не ремонтувати одразу
-            return False
+            self.last_repair = ctx.now      # відлік запасного таймера від старту
         elapsed = ctx.now - self.last_repair
+        # Після ремонту спершу чекаємо контрольного кадру. Інакше стара
+        # підтверджена поломка одразу запускала б друге коло ремонту.
+        if self.check_broken_at is not None:
+            return False
         if ctx.now < self.useless_until:
             return elapsed >= cfg.every              # ремонт не допомагає — лише за таймером
-        if self._damage_for_sure(ctx):
+        worn, broken = self._confirmed_damage(ctx)
+        if broken:
+            return True                              # зламана річ не працює — не чекаємо 10 хв
+        if worn:
             return elapsed >= cfg.min_interval
         return elapsed >= cfg.every
 
@@ -172,7 +180,8 @@ class RepairPipeline(Pipeline):
         не ремонтує. Тоді робимо паузу, щоб не бігати в Лавку щодесять хвилин намарно.
         """
         cfg: RepairConfig = self.config
-        still = find_template(ctx.frame.image, cfg.worn_icon) is not None
+        worn, broken = self._damage_visible(ctx.frame.image)
+        still = worn or broken
         if not still:
             self.check_broken_at = None
             return
@@ -183,21 +192,37 @@ class RepairPipeline(Pipeline):
                         "монет; наступна спроба через %.0f хв",
                         self.window, cfg.useless_pause / 60)
 
-    def _damage_for_sure(self, ctx: PipelineContext) -> bool:
+    def _damage_visible(self, frame) -> tuple[bool, bool]:
+        """Повернути окремо звичайний знос і червону поломку."""
+        cfg: RepairConfig = self.config
+        worn = find_template(frame, cfg.worn_icon) is not None
+        broken = any(marker_present(frame, marker) for marker in cfg.broken_markers)
+        return worn, broken
+
+    def _confirmed_damage(self, ctx: PipelineContext) -> tuple[bool, bool]:
         """
         Знос або поломка, які не зникли за мить: над панеллю пролітають цифри урону
         і на секунду виглядають точнісінько як червона іконка. Іконка спорядження
         стоїть на місці, цифра зникає за секунду.
         """
         cfg: RepairConfig = self.config
-        seen = (find_template(ctx.frame.image, cfg.worn_icon) is not None
-                or any(marker_present(ctx.frame.image, m) for m in cfg.broken_markers))
-        if not seen:
+        worn, broken = self._damage_visible(ctx.frame.image)
+
+        if not worn:
+            self.worn_since = None
+        elif self.worn_since is None:
+            self.worn_since = ctx.now
+
+        if not broken:
             self.broken_since = None
-            return False
-        if self.broken_since is None:
+        elif self.broken_since is None:
             self.broken_since = ctx.now
-        return ctx.now - self.broken_since >= cfg.confirm_damage
+
+        worn_confirmed = (self.worn_since is not None
+                          and ctx.now - self.worn_since >= cfg.confirm_damage)
+        broken_confirmed = (self.broken_since is not None
+                            and ctx.now - self.broken_since >= cfg.confirm_damage)
+        return worn_confirmed, broken_confirmed
 
     # ---- цикл ---------------------------------------------------------------
     def process(self, ctx: PipelineContext) -> PipelineResult:
@@ -206,13 +231,21 @@ class RepairPipeline(Pipeline):
 
         if self.state is RepairState.IDLE:
             self._recheck_broken(ctx)
+            due = self._due(ctx)
             if self._in_combat(ctx):
                 self.idle_since = None
-                return PipelineResult.idle()
+                set_busy(ctx.shared, "repair", False)
+                return PipelineResult.idle("час ремонту · добиваю ціль" if due else "")
             if self.idle_since is None:
                 self.idle_since = ctx.now
-            if not self._due(ctx) or ctx.now - self.idle_since < cfg.idle_before:
+            if not due:
+                set_busy(ctx.shared, "repair", False)
                 return PipelineResult.idle()
+            # Таймер уже настав: не даємо пошуку взяти наступного моба, інакше на
+            # безперервному фармі дві секунди спокою можуть не настати ніколи.
+            set_busy(ctx.shared, "repair", True)
+            if ctx.now - self.idle_since < cfg.idle_before:
+                return PipelineResult.idle("час ремонту · чекаю спокою")
             return self._start(ctx, frame)
 
         if self.state is RepairState.VERIFY_CLOSED:
@@ -309,6 +342,8 @@ class RepairPipeline(Pipeline):
         self.close_tries = 0
         self.last_repair = ctx.now
         self.idle_since = None
+        self.worn_since = None
+        self.broken_since = None
         self.check_broken_at = ctx.now + cfg.step_timeout    # чи зникла червона ознака
         return PipelineResult(actions=actions, status="ремонт: закриваю вікна")
 

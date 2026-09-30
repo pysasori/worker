@@ -71,6 +71,7 @@ class Pipeline(ABC):
     config_model: ClassVar[type[PipelineConfig]]
     label: ClassVar[str] = ""                         # людська назва для інтерфейсу
     category: ClassVar[str] = "інше"                  # група в конструкторі: pet, combat, loot, service
+    run_order: ClassVar[int] = 0                      # більші значення виконуються пізніше
     provides: ClassVar[frozenset[str]] = frozenset()  # що кладе на спільну дошку
     requires: ClassVar[frozenset[str]] = frozenset()  # що звідти читає
 

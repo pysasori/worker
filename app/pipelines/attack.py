@@ -11,7 +11,7 @@ from pydantic import Field
 from app.pipelines.actions import PipelineResult, PressKey
 from app.pipelines.base import Pipeline, PipelineConfig, PipelineContext
 from app.pipelines.registry import register
-from app.pipelines.shared import SHARED_TARGET, busy_reasons, read_target
+from app.pipelines.shared import SHARED_TARGET, busy_reasons, combat_ready, read_target
 
 
 class AttackConfig(PipelineConfig):
@@ -26,6 +26,7 @@ class AttackPipeline(Pipeline):
     type_name = "attack"
     label = "Атака"
     category = "combat"
+    run_order = 200
     config_model = AttackConfig
     requires = frozenset({SHARED_TARGET})
 
@@ -39,6 +40,9 @@ class AttackPipeline(Pipeline):
 
     def process(self, ctx: PipelineContext) -> PipelineResult:
         cfg: AttackConfig = self.config
+        if not combat_ready(ctx.shared):
+            self.seen_target = None
+            return PipelineResult.idle("чекаю перевірку місця")
         target = read_target(ctx.shared)
         if target is None:
             return PipelineResult.idle("нема даних про ціль")

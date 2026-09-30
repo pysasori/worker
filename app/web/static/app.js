@@ -25,12 +25,10 @@ const CATEGORY = {
   pet: "Пет", combat: "Бій", loot: "Лут", nav: "Повернення", service: "Обслуговування",
   "інше": "Інше",
 };
-const CATEGORY_ORDER = Object.keys(CATEGORY);
-
 const S = {
   config: null, catalog: [], state: null,
   window: null,          // ім'я вибраного вікна (нік персонажа)
-  profile: null,         // профіль, який зараз редагується в конструкторі
+  profile: null,         // який профіль браузиться в конструкторі; null = профіль вибраного персонажа
   dirty: false, open: {}, timer: null, cardsKey: "",
   // технічні поля (зони, кольори, пороги) сховані: вони потрібні лише
   // при перекалібруванні під іншу роздільну здатність
@@ -158,37 +156,68 @@ function dictInput(value, onChange) {
 function cellsInput(value, onChange, rows = 4, cols = 8) {
   const chosen = new Set(Array.isArray(value) ? value : []);
   const box = el("div", "cells");
+  const selected = () => [...chosen].sort((a, b) => {
+    const [ar, ac] = a.split(":").map(Number);
+    const [br, bc] = b.split(":").map(Number);
+    return ar - br || ac - bc;
+  });
+  const commit = () => onChange(selected());
   const redraw = () => {
     box.innerHTML = "";
+
+    const header = el("div", "cells-row cells-header");
+    header.appendChild(el("span", "cells-axis", "ряд"));
+    for (let c = 1; c <= cols; c++) header.appendChild(el("span", "cells-col", String(c)));
+    header.appendChild(el("span", "cells-row-caption", "увесь рядок"));
+    box.appendChild(header);
+
     for (let r = 1; r <= rows; r++) {
       const line = el("div", "cells-row");
+      line.appendChild(el("span", "cells-axis", String(r)));
       for (let c = 1; c <= cols; c++) {
         const key = `${r}:${c}`;
-        const cell = el("button", "cell" + (chosen.has(key) ? " on" : ""), String(c));
+        const cell = el("button", "cell" + (chosen.has(key) ? " on" : ""), chosen.has(key) ? "✓" : "");
+        cell.type = "button";
+        cell.setAttribute("aria-pressed", chosen.has(key) ? "true" : "false");
         cell.title = `рядок ${r}, комірка ${c}`;
         cell.onclick = (e) => {
           e.preventDefault();
           chosen.has(key) ? chosen.delete(key) : chosen.add(key);
-          onChange([...chosen].sort());
+          commit();
           redraw();
         };
         line.appendChild(cell);
       }
-      const all = el("button", "quiet cells-row-btn", "рядок");
+      const all = el("button", "quiet cells-row-btn", "обрати");
+      all.type = "button";
       all.title = "увесь рядок";
       all.onclick = (e) => {
         e.preventDefault();
         const keys = Array.from({ length: cols }, (_, i) => `${r}:${i + 1}`);
         const full = keys.every((k) => chosen.has(k));
         keys.forEach((k) => (full ? chosen.delete(k) : chosen.add(k)));
-        onChange([...chosen].sort());
+        commit();
         redraw();
       };
       line.appendChild(all);
       box.appendChild(line);
     }
-    const hint = el("div", "desc", chosen.size ? `вибрано ${chosen.size}` : "нічого не вибрано — продаж мовчить");
-    box.appendChild(hint);
+
+    const actions = el("div", "cells-actions");
+    const all = el("button", "quiet", "обрати все");
+    const clear = el("button", "quiet", "очистити");
+    all.type = clear.type = "button";
+    all.onclick = (e) => {
+      e.preventDefault();
+      for (let r = 1; r <= rows; r++) for (let c = 1; c <= cols; c++) chosen.add(`${r}:${c}`);
+      commit(); redraw();
+    };
+    clear.onclick = (e) => {
+      e.preventDefault();
+      chosen.clear(); commit(); redraw();
+    };
+    actions.append(all, clear, el("span", "cells-count", chosen.size ? `обрано: ${chosen.size}` : "нічого — продаж не запускається"));
+    box.appendChild(actions);
   };
   redraw();
   return box;
@@ -293,7 +322,7 @@ function buildFields(schema, root, value, onChange, container, opts = {}) {
 
 /* ---------- дані ---------- */
 const metaOf = (type) => S.catalog.find((c) => c.type === type)
-  || { schema: {}, provides: [], requires: [], category: "інше", label: type };
+  || { schema: {}, provides: [], requires: [], category: "інше", label: type, run_order: 0 };
 
 /* Вікна — це персонажі: онлайн-клієнти від сканера плюс ті, чиї вікна зараз закриті. */
 const entries = () => S.state?.windows || [];
@@ -301,7 +330,9 @@ const currentEntry = () => entries().find((w) => w.name === S.window) || entries
 const charOf = (entry) => (entry && entry.nick ? S.config.characters[entry.nick] : null) || null;
 const currentChar = () => charOf(currentEntry());
 
-/* Профіль, що редагується: вибраний у списку, інакше профіль вибраного персонажа. */
+/* Конструктор за замовчуванням іде за профілем вибраного персонажа, але пул можна
+   браузити окремо (вибір у «Конструкторі» -> S.profile) — саме так туди й додають
+   профіль, ще не призначений нікому. */
 function profileName() {
   if (S.profile && S.config.profiles[S.profile]) return S.profile;
   const own = currentChar()?.profile;
@@ -311,7 +342,6 @@ function profileName() {
 }
 const currentProfile = () => S.config.profiles[profileName()];
 
-/* «Своє для цього вікна» діє, лише коли редагований профіль — профіль вибраного персонажа. */
 const ownerOf = () => {
   const char = currentChar();
   return char && char.profile === profileName() ? char : null;
@@ -319,9 +349,6 @@ const ownerOf = () => {
 
 const effectiveConfig = (owner, spec) =>
   ({ ...spec.config, ...(((owner && owner.overrides) || {})[spec.type] || {}) });
-
-const usersOf = (profile) => Object.entries(S.config.characters)
-  .filter(([, c]) => c.profile === profile).map(([nick, c]) => c.label || nick);
 
 /* ---------- вікна (картки персонажів) ---------- */
 function statusLine(entry) {
@@ -358,10 +385,10 @@ function renderWindows() {
     card.dataset.name = entry.name;
     card.onclick = (e) => {
       if (e.target.closest("input, button, label, select")) return;
-      S.window = entry.name;
-      S.profile = null;                    // конструктор іде за профілем вибраного персонажа
+      S.window = entry.name; S.profile = null;
       render();
       refreshPreview();
+      refreshEvents();
     };
 
     const row = el("div", "row");
@@ -370,7 +397,25 @@ function renderWindows() {
     const title = el("div", "name", entry.label || entry.name);
     title.style.flex = "1";
     title.style.fontWeight = "600";
-    row.append(dot, title);
+    const run = el("button", entry.active ? "danger window-run" : "quiet window-run",
+                   entry.active ? "стоп" : "старт");
+    run.title = `${entry.active ? "зупинити" : "запустити"} лише цього персонажа`;
+    run.disabled = !entry.online || (!entry.enabled && !entry.active);
+    run.onclick = async () => {
+      const wasActive = entry.active;
+      run.disabled = true;
+      try {
+        if (S.dirty) await saveConfig();
+        const action = wasActive ? "stop" : "start";
+        const body = wasActive ? {} : { dry_run: $("dryRun").checked };
+        S.state = await api.post(`/api/windows/${encodeURIComponent(entry.name)}/${action}`, body);
+        render();
+      } catch (e) {
+        toast(e.message, "err");
+        run.disabled = false;
+      }
+    };
+    row.append(dot, title, run);
     card.appendChild(row);
 
     const meta = el("div", "stats");
@@ -390,13 +435,12 @@ function renderWindows() {
       profile.title = "профіль цього персонажа";
       profile.onchange = () => {
         char.profile = profile.value;
-        if (active) S.profile = null;
         markDirty(); render();
       };
       const on = el("label", "chk card-on");
       on.title = "запускати бота для цього персонажа";
       const box = el("input"); box.type = "checkbox"; box.checked = !!char.enabled;
-      box.onchange = () => { char.enabled = box.checked; markDirty(); };
+      box.onchange = () => { char.enabled = box.checked; markDirty(); render(); };
       on.append(box, document.createTextNode(" запускати"));
       line.append(profile, on);
       card.appendChild(line);
@@ -444,9 +488,9 @@ function pinControls(entry, unread) {
       const fresh = await api.get("/api/config");
       Object.keys(fresh.characters).forEach((k) => { if (!S.config.characters[k]) S.config.characters[k] = fresh.characters[k]; });
       Object.keys(S.config.characters).forEach((k) => { if (!fresh.characters[k] && !S.dirty) delete S.config.characters[k]; });
-      S.window = nick;
+      S.window = nick; S.profile = null;
       toast(`вікно #${entry.hwnd} закріплено за ${nick}`, "ok");
-      render(); refreshPreview();
+      render(); refreshPreview(); refreshEvents();
     } catch (e) { toast(e.message, "err"); }
   };
   row.append(input, go);
@@ -537,44 +581,50 @@ function windowSettings(entry, char) {
 }
 
 /* ---------- пул профілів ---------- */
+function usersOf(name) {
+  return Object.entries(S.config.characters)
+    .filter(([, c]) => c.profile === name).map(([nick, c]) => c.label || nick);
+}
+
 function renderProfileBar() {
   const host = $("profileBar");
   host.innerHTML = "";
-  const names = Object.keys(S.config.profiles);
   const current = profileName();
+  const names = Object.keys(S.config.profiles);
 
+  const row = el("div", "profile-row");
   const select = el("select");
+  select.title = "переглянути й редагувати інший профіль з пулу";
   names.forEach((n) => {
-    const o = el("option", "", n + (S.config.default_profile === n ? "  ★" : ""));
+    const o = el("option", "", n);
     o.value = n; o.selected = n === current;
     select.appendChild(o);
   });
   select.onchange = () => { S.profile = select.value; renderPipelines(); renderProfileBar(); };
-
-  const btn = (text, title, fn, cls = "quiet") => {
-    const b = el("button", cls, text); b.title = title; b.onclick = fn; return b;
-  };
-  const row = el("div", "profile-row");
-  row.append(select,
-    btn("копія", "створити новий профіль із копії цього", () => addProfile(current)),
-    btn("назва", "перейменувати профіль", () => renameProfile(current)),
-    btn("×", "видалити профіль", () => removeProfile(current)));
+  row.appendChild(select);
   host.appendChild(row);
 
-  const users = usersOf(current);
-  const info = el("div", "hint",
-    users.length ? `використовують: ${users.join(", ")}` : "цей профіль поки нікому не призначено");
-  host.appendChild(info);
+  const actions = el("div", "profile-actions");
+  const create = el("button", "quiet", "створити профіль");
+  create.title = "нова копія поточного профілю в пул. Є вибраний персонаж — одразу йому "
+                + "й призначиться, інакше признач потім вибором у картці зліва";
+  create.onclick = () => addProfile(current);
 
-  const def = el("label", "chk");
-  const box = el("input"); box.type = "checkbox";
-  box.checked = S.config.default_profile === current;
-  box.onchange = () => {
-    S.config.default_profile = box.checked ? current : null;
-    markDirty(); renderProfileBar();
-  };
-  def.append(box, document.createTextNode(" для нових персонажів (★)"));
-  host.appendChild(def);
+  const rename = el("button", "quiet", "перейменувати");
+  rename.title = "перейменувати профіль «" + current + "»";
+  rename.onclick = () => renameProfile(current);
+
+  const del = el("button", "quiet", "видалити");
+  del.title = "прибрати профіль «" + current + "» із пулу";
+  del.disabled = names.length <= 1;
+  del.onclick = () => removeProfile(current);
+
+  actions.append(create, rename, del);
+  host.appendChild(actions);
+
+  const users = usersOf(current);
+  host.appendChild(el("div", "hint",
+    users.length ? `використовують: ${users.join(", ")}` : "поки нікому не призначено"));
 }
 
 function askProfileName(text, suggestion) {
@@ -586,42 +636,85 @@ function askProfileName(text, suggestion) {
 
 function addProfile(from) {
   const name = askProfileName("Назва нового профілю (буде копією поточного):", `${from} копія`);
-  if (!name) return;
+  if (!name) return false;
   S.config.profiles[name] = JSON.parse(JSON.stringify(S.config.profiles[from]));
-  S.profile = name;
+  S.profile = name;                          // дивимось на щойно створений
+  const owner = currentChar();               // є вибраний персонаж — одразу йому й призначаємо
+  if (owner) owner.profile = name;
   markDirty(); render();
+  toast(owner ? `профіль «${name}» створено для вибраного персонажа`
+              : `профіль «${name}» додано в пул — признач його персонажу зліва`, "ok");
+  return true;
 }
 
 function renameProfile(from) {
   const name = askProfileName(`Нова назва для «${from}»:`, from);
   if (!name) return;
   const renamed = {};
-  Object.entries(S.config.profiles).forEach(([k, v]) => { renamed[k === from ? name : k] = v; });
-  S.config.profiles = renamed;                       // порядок у пулі лишається
-  Object.values(S.config.characters).forEach((c) => { if (c.profile === from) c.profile = name; });
+  Object.entries(S.config.profiles).forEach(([key, value]) => {
+    renamed[key === from ? name : key] = value;
+  });
+  S.config.profiles = renamed;
+  Object.values(S.config.characters).forEach((char) => {
+    if (char.profile === from) char.profile = name;
+  });
+  S.config.windows.forEach((window) => {
+    if (window.profile === from) window.profile = name;
+  });
   if (S.config.default_profile === from) S.config.default_profile = name;
   S.profile = name;
   markDirty(); render();
+  toast(`профіль «${from}» перейменовано на «${name}»`, "ok");
 }
 
 function removeProfile(name) {
   const rest = Object.keys(S.config.profiles).filter((n) => n !== name);
   if (!rest.length) { toast("останній профіль видаляти не можна", "err"); return; }
   const users = usersOf(name);
-  const fallback = S.config.default_profile && S.config.default_profile !== name
+  const fallback = (S.config.default_profile && S.config.default_profile !== name)
     ? S.config.default_profile : rest[0];
   const warn = users.length
-    ? `Профіль «${name}» використовують: ${users.join(", ")}.\nЇм призначиться «${fallback}». Видалити?`
+    ? `Профіль «${name}» використовують: ${users.join(", ")}.
+Їм призначиться «${fallback}». Видалити?`
     : `Видалити профіль «${name}»?`;
   if (!confirm(warn)) return;
   delete S.config.profiles[name];
-  Object.values(S.config.characters).forEach((c) => { if (c.profile === name) c.profile = fallback; });
+  Object.values(S.config.characters).forEach((char) => { if (char.profile === name) char.profile = fallback; });
+  S.config.windows.forEach((window) => { if (window.profile === name) window.profile = fallback; });
   if (S.config.default_profile === name) S.config.default_profile = null;
   S.profile = null;
   markDirty(); render();
+  toast(`профіль «${name}» видалено`, "ok");
 }
 
 /* ---------- конструктор ---------- */
+function orderedPipelineItems(profile) {
+  return profile.pipelines
+    .map((spec, index) => ({ spec, index, runOrder: Number(metaOf(spec.type).run_order || 0) }))
+    .sort((a, b) => a.runOrder - b.runOrder || a.index - b.index);
+}
+
+function phaseLabel(runOrder) {
+  if (runOrder === 0) return "Підготовка й обслуговування";
+  if (runOrder === 50) return "Підготовка до бою · форма";
+  if (runOrder === 100) return "Пошук цілі · завжди в кінці";
+  if (runOrder === 150) return "Збір луту · після пошуку";
+  if (runOrder === 200) return "Атака · останній крок";
+  return `Етап ${runOrder}`;
+}
+
+function movePipeline(profile, index, direction) {
+  const ordered = orderedPipelineItems(profile);
+  const position = ordered.findIndex((item) => item.index === index);
+  const current = ordered[position];
+  const target = ordered[position + direction];
+  if (!current || !target || current.runOrder !== target.runOrder) return;
+  [profile.pipelines[current.index], profile.pipelines[target.index]] =
+    [profile.pipelines[target.index], profile.pipelines[current.index]];
+  markDirty();
+  renderPipelines();
+}
+
 function renderPipelines() {
   const host = $("pipelines");
   host.innerHTML = "";
@@ -633,28 +726,28 @@ function renderPipelines() {
     ? `профіль «${profileName()}» · персонаж ${entry.label || entry.nick}`
     : `профіль «${profileName()}»`;
 
-  const groups = new Map();
-  profile.pipelines.forEach((spec, index) => {
-    const cat = metaOf(spec.type).category || "інше";
-    if (!groups.has(cat)) groups.set(cat, []);
-    groups.get(cat).push({ spec, index });
+  const ordered = orderedPipelineItems(profile);
+  const phases = new Map();
+  ordered.forEach((item) => {
+    if (!phases.has(item.runOrder)) phases.set(item.runOrder, []);
+    phases.get(item.runOrder).push(item);
   });
 
-  [...groups.keys()]
-    .sort((a, b) => CATEGORY_ORDER.indexOf(a) - CATEGORY_ORDER.indexOf(b))
-    .forEach((cat) => {
-      const items = groups.get(cat);
+  phases.forEach((items, runOrder) => {
       const head = el("div", "group");
-      head.append(el("h3", "", CATEGORY[cat] || cat), el("div", "line"),
+      head.append(el("h3", "", phaseLabel(runOrder)), el("div", "line"),
                   el("span", "count", `${items.filter((i) => i.spec.enabled).length}/${items.length}`));
       host.appendChild(head);
-      items.forEach(({ spec, index }) => host.appendChild(pipelineCard(owner, profile, spec, index)));
-    });
+      items.forEach(({ spec, index }, position) => host.appendChild(pipelineCard(owner, profile, spec, index, {
+        canUp: position > 0,
+        canDown: position < items.length - 1,
+      })));
+  });
 
   renderManualButtons();
 }
 
-function pipelineCard(owner, profile, spec, index) {
+function pipelineCard(owner, profile, spec, index, movement) {
   const meta = metaOf(spec.type);
   const hasOverride = !!(owner && (owner.overrides || {})[spec.type]);
   if (S.open[spec.type] === undefined) S.open[spec.type] = false;
@@ -666,7 +759,8 @@ function pipelineCard(owner, profile, spec, index) {
 
   const titleBox = el("div");
   titleBox.append(el("div", "name", meta.label || spec.type),
-                  el("div", "sub", spec.type + (hasOverride ? " · своє для цього персонажа" : "")));
+                  el("div", "sub", `${CATEGORY[meta.category] || meta.category || "Інше"} · ${spec.type}` +
+                    (hasOverride ? " · своє для цього персонажа" : "")));
   head.appendChild(titleBox);
 
   const wires = el("div", "wires");
@@ -674,6 +768,19 @@ function pipelineCard(owner, profile, spec, index) {
   meta.provides.forEach((p) => wires.appendChild(el("span", "chip out", `${p} →`)));
   if (!meta.requires.length && !meta.provides.length) wires.appendChild(el("span", "chip", "самостійний"));
   head.appendChild(wires);
+
+  const order = el("div", "pipe-order");
+  const up = el("button", "quiet order-btn", "↑");
+  const down = el("button", "quiet order-btn", "↓");
+  up.type = down.type = "button";
+  up.title = "виконувати раніше";
+  down.title = "виконувати пізніше";
+  up.disabled = !movement.canUp;
+  down.disabled = !movement.canDown;
+  up.onclick = () => movePipeline(profile, index, -1);
+  down.onclick = () => movePipeline(profile, index, 1);
+  order.append(up, down);
+  head.appendChild(order);
 
   const fold = el("button", "quiet", S.open[spec.type] ? "згорнути" : "налаштувати");
   head.appendChild(fold);
@@ -727,6 +834,7 @@ function renderManualButtons() {
     if (spec.type === "attack" && cfg.key) add(`Атака · ${cfg.key}`, cfg.key);
     if (spec.type === "target_search" && cfg.target_key) add(`Ціль · ${cfg.target_key}`, cfg.target_key);
     if (spec.type === "loot" && cfg.key) add(`Лут · ${cfg.key} ×${cfg.max_presses}`, cfg.key, cfg.max_presses, cfg.interval);
+    if (spec.type === "form_keep" && cfg.key) add(`Форма · ${cfg.key}`, cfg.key);
     if (spec.type === "pet_heal" && cfg.heal_key) add(`Лік пета · ${cfg.heal_key}`, cfg.heal_key);
     if (spec.type === "repair" && cfg.bag_key) add(`Рюкзак · ${cfg.bag_key}`, cfg.bag_key);
     if (spec.type === "periodic_keys") Object.keys(cfg.keys || {}).forEach((k) => add(`Клавіша ${k}`, k));
@@ -831,6 +939,7 @@ async function rescan() {
     await adoptNewCharacters();
     render();
     refreshPreview();
+    refreshEvents();
   } catch (e) { toast(e.message, "err"); }
   finally { $("btnDiscover").disabled = false; }
 }
@@ -858,24 +967,54 @@ async function load() {
   S.window = entries()[0]?.name || null;
   render();
   refreshPreview();
+  refreshEvents();
 }
 
 /* ---------- події ---------- */
+function eventLine(e) {
+  const t = new Date(e.ts * 1000).toLocaleTimeString("uk-UA", { hour12: false });
+  const warn = e.level === "WARNING" || e.level === "ERROR" || e.message.startsWith("!!");
+  const row = el("div", "event-line" + (warn ? " warn" : ""));
+  row.append(el("span", "t", t), el("span", "w", `[${e.window}]`), el("span", "", e.message));
+  return row;
+}
+
+async function refreshEvents() {
+  const host = $("eventList");
+  if (!host) return;
+  const all = $("eventsAll").checked;
+  const entry = currentEntry();
+  $("eventsWho").textContent = all ? "усі персонажі" : (entry ? (entry.label || entry.name) : "нема вікна");
+  if (!all && !entry) { host.innerHTML = ""; host.appendChild(el("div", "events-empty", "вибери вікно зліва")); return; }
+  const params = new URLSearchParams({ limit: "150" });
+  if (!all) params.set("window", entry.name);
+  try {
+    const events = await api.get(`/api/log?${params}`);
+    host.innerHTML = "";
+    if (!events.length) { host.appendChild(el("div", "events-empty", "поки що тихо")); return; }
+    events.forEach((e) => host.appendChild(eventLine(e)));
+  } catch (e) { /* сервер міг перезапускатись */ }
+}
+
 $("btnSave").onclick = async () => {
-  try {
-    S.config = await api.put("/api/config", S.config);
-    S.dirty = false;
-    S.warnedDirty = false;
-    $("btnSave").disabled = true;
-    $("btnSave").textContent = "Зберегти";
-    toast("збережено" + (S.state?.running ? " · бот перезапущено" : ""), "ok");
-    await refreshState();
-    render();
-  } catch (e) { toast(e.message, "err"); }
+  try { await saveConfig(); }
+  catch (e) { toast(e.message, "err"); }
 };
+
+async function saveConfig() {
+  S.config = await api.put("/api/config", S.config);
+  S.dirty = false;
+  S.warnedDirty = false;
+  $("btnSave").disabled = true;
+  $("btnSave").textContent = "Зберегти";
+  toast("збережено" + (S.state?.running ? " · бот перезапущено" : ""), "ok");
+  await refreshState();
+  render();
+}
+
 $("btnStart").onclick = async () => {
-  if (S.dirty) toast("є незбережені зміни — бот стартує зі збереженими налаштуваннями");
   try {
+    if (S.dirty) await saveConfig();
     S.state = await api.post("/api/control/start", { dry_run: $("dryRun").checked });
     if (!entries().some((e) => e.enabled && e.online)) {
       toast("жоден персонаж не увімкнений — постав «запускати» біля потрібного", "err");
@@ -919,5 +1058,9 @@ $("autoRefresh").onchange = () => {
   if ($("autoRefresh").checked) S.timer = setInterval(refreshPreview, 1500);
 };
 
+$("btnEventsRefresh").onclick = refreshEvents;
+$("eventsAll").onchange = refreshEvents;
+
 setInterval(refreshState, 1000);
+setInterval(refreshEvents, 2000);
 load().catch((e) => toast(e.message, "err"));

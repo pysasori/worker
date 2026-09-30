@@ -15,7 +15,7 @@ from PIL import Image
 from pydantic import BaseModel, Field
 
 from app.core.geometry import Region
-from app.vision.colors import is_bright, is_red
+from app.vision.colors import is_red
 from app.vision.schemas import BarReading
 
 
@@ -37,22 +37,23 @@ def read_player_hp(image: Image.Image, cfg: PlayerBarConfig | None = None) -> Ba
     crop = image.crop(cfg.region.box)
     px = crop.load()
     w, h = crop.size
-    best = 0
+
+    # Зона щільно охоплює лише HP-смужку. Білий напис на кшталт «924/925» може
+    # розірвати червоне на 20–30 px: старий пошук зупинявся всередині цифр і
+    # читав повну смужку як 44%. Беремо крайні червоні пікселі по всій висоті;
+    # напис між ними не змінює справжній правий край заповнення.
+    first, last = w, -1
     row = 0
-    start = 0
     for y in range(h):
-        first = last = -1
         for x in range(w):
-            p = px[x, y]
-            if is_red(p):
-                if first < 0:
+            if is_red(px[x, y]):
+                if x < first:
                     first = x
-                last = x
-            elif first >= 0 and not is_bright(p, cfg.bright_min) and x - last > cfg.gap:
-                break
-        if first >= 0 and last - first + 1 > best:
-            best, row, start = last - first + 1, y, first
-    if not best:
+                if x > last:
+                    row = y
+                    last = x
+    if last < first:
         return BarReading(present=False, total=cfg.width)
-    return BarReading(present=True, filled=min(best, cfg.width), total=cfg.width,
-                      x0=cfg.region.x + start, row=cfg.region.y + row)
+    filled = min(last - first + 1, cfg.width)
+    return BarReading(present=True, filled=filled, total=cfg.width,
+                      x0=cfg.region.x + first, row=cfg.region.y + row)

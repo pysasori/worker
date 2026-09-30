@@ -1,6 +1,6 @@
 {
   "profiles": {
-    "pw136_1440x1080": {
+    "Дру на волках 22-25": {
       "client_size": [
         1440,
         1080
@@ -188,12 +188,208 @@
           }
         }
       ]
+    },
+    "Анігілятор мобів поряд 0+": {
+      "client_size": [
+        1440,
+        1080
+      ],
+      "pipelines": [
+        {
+          "type": "death_return",
+          "enabled": true,
+          "config": {
+            "use_flight": false,
+            "flight_key": "9",
+            "climb_to": 0,
+            "travel_timeout": 900,
+            "climb_timeout": 30
+          }
+        },
+        {
+          "type": "pet_heal",
+          "enabled": false,
+          "config": {
+            "heal_key": "f3",
+            "heal_below": 0.5,
+            "cooldown": 3
+          }
+        },
+        {
+          "type": "pet_feed",
+          "enabled": false,
+          "config": {
+            "feed_key": "f8",
+            "feed_below": 0.5,
+            "cooldown": 40,
+            "give_up_after": 8
+          }
+        },
+        {
+          "type": "pet_summon",
+          "enabled": false,
+          "config": {
+            "summon_key": "f7",
+            "cast_time": 5,
+            "cooldown": 8,
+            "confirm_frames": 4,
+            "retry_after": 300,
+            "missing_for": 5,
+            "hold_for": 15
+          }
+        },
+        {
+          "type": "position",
+          "enabled": true,
+          "config": {
+            "read_every": 1,
+            "home_x": 427,
+            "home_y": 635,
+            "warn_away": 12
+          }
+        },
+        {
+          "type": "altitude",
+          "enabled": false,
+          "config": {
+            "read_every": 1
+          }
+        },
+        {
+          "type": "altitude_hold",
+          "enabled": false,
+          "config": {
+            "target": 0,
+            "tolerance": 2,
+            "up_key": "space",
+            "down_key": "z",
+            "interval": 1
+          }
+        },
+        {
+          "type": "return_home",
+          "enabled": true,
+          "config": {
+            "max_distance": 12,
+            "fly": true,
+            "fly_beyond": 40,
+            "fly_height": 55,
+            "point_name": "фарм"
+          }
+        },
+        {
+          "type": "target_search",
+          "enabled": true,
+          "config": {
+            "target_key": "tab",
+            "retarget_delay": 1,
+            "confirm_frames": 2,
+            "min_acquire": 2,
+            "stale_after": 12,
+            "names": {
+              "enabled": false,
+              "allow": [],
+              "deny": [],
+              "min_ratio": 0.75
+            }
+          }
+        },
+        {
+          "type": "heal",
+          "enabled": true,
+          "config": {
+            "heal_key": "f6",
+            "heal_below": 0.7,
+            "cooldown": 10,
+            "panic_below": 0.4
+          }
+        },
+        {
+          "type": "form_keep",
+          "enabled": true,
+          "config": {
+            "key": "1",
+            "retry_after": 5,
+            "confirm_missing": 2
+          }
+        },
+        {
+          "type": "attack",
+          "enabled": true,
+          "config": {
+            "key": "f1",
+            "interval": 3,
+            "stop_below": 0
+          }
+        },
+        {
+          "type": "loot",
+          "enabled": true,
+          "config": {
+            "key": "f2",
+            "max_presses": 5,
+            "interval": 0.4,
+            "corpse_delay": 0.3,
+            "check": {
+              "enabled": true,
+              "size": 420,
+              "offset_x": 0,
+              "offset_y": 0
+            }
+          }
+        },
+        {
+          "type": "repair",
+          "enabled": true,
+          "config": {
+            "every": 3600,
+            "min_interval": 600,
+            "bag_key": "b",
+            "close_key": "esc"
+          }
+        },
+        {
+          "type": "sell",
+          "enabled": true,
+          "config": {
+            "every": 300,
+            "cells": [
+              "4:1",
+              "4:2",
+              "4:3",
+              "4:4",
+              "4:5",
+              "4:6",
+              "4:7",
+              "4:8"
+            ],
+            "hover_delay": 0.4,
+            "step_delay": 1
+          }
+        },
+        {
+          "type": "dialog_guard",
+          "enabled": true,
+          "config": {
+            "close_key": "esc",
+            "cooldown": 3
+          }
+        },
+        {
+          "type": "periodic_keys",
+          "enabled": false,
+          "config": {
+            "keys": {},
+            "press_on_start": true
+          }
+        }
+      ]
     }
   },
   "windows": [
     {
       "name": "main",
-      "profile": "pw136_1440x1080",
+      "profile": "Дру на волках 22-25",
       "match": {
         "class_name": "ElementClient Window",
         "process": "ElementClient.exe",
@@ -208,7 +404,7 @@
   ],
   "characters": {
     "CEKXU": {
-      "profile": "pw136_1440x1080",
+      "profile": "Дру на волках 22-25",
       "label": "",
       "aliases": [],
       "enabled": true,
@@ -216,7 +412,23 @@
       "overrides": {}
     },
     "BroWorker": {
-      "profile": "pw136_1440x1080",
+      "profile": "Анігілятор мобів поряд 0+",
+      "label": "",
+      "aliases": [],
+      "enabled": true,
+      "poll_interval": 0.06,
+      "overrides": {}
+    },
+    "Elinalise": {
+      "profile": "Дру на волках 22-25",
+      "label": "",
+      "aliases": [],
+      "enabled": false,
+      "poll_interval": 0.06,
+      "overrides": {}
+    },
+    "cookie": {
+      "profile": "Дру на волках 22-25",
       "label": "",
       "aliases": [],
       "enabled": false,

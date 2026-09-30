@@ -41,7 +41,8 @@ def bot_config_raw() -> dict:
 
 
 def _spec(bot_config_raw: dict, type_name: str) -> dict:
-    return next(p for p in bot_config_raw["profiles"]["pw136_1440x1080"]["pipelines"]
+    profile = next(iter(bot_config_raw["profiles"].values()))
+    return next(p for p in profile["pipelines"]
                 if p["type"] == type_name)["config"]
 
 

@@ -12,7 +12,7 @@ from app.pipelines.loot import LootPipeline
 from app.pipelines.periodic import PeriodicKeysConfig, PeriodicKeysPipeline
 from app.pipelines.pet import PetHealPipeline
 from app.pipelines.registry import build_pipeline, known_types
-from app.pipelines.shared import SHARED_TARGET, read_target
+from app.pipelines.shared import SHARED_COMBAT_READY, SHARED_TARGET, read_target
 from app.pipelines.target_search import TargetSearchPipeline
 from app.pipelines.wiring import order_pipelines
 from tests.conftest import set_bar_fill
@@ -47,6 +47,15 @@ def test_search_taps_target_key_when_no_target(real_frame, search_cfg):
     assert keys_of(pipe.process(ctx_for(empty, 0.0))) == [search_cfg.target_key]
     assert keys_of(pipe.process(ctx_for(empty, 0.2))) == [], "не спамити Tab частіше за retarget_delay"
     assert keys_of(pipe.process(ctx_for(empty, 2.0))) == [search_cfg.target_key]
+
+
+def test_search_waits_until_start_position_is_checked(real_frame, search_cfg):
+    empty = set_bar_fill(real_frame, *TARGET_BAR, 0.0)
+    shared = {SHARED_COMBAT_READY: False}
+    res = TargetSearchPipeline(search_cfg).process(ctx_for(empty, 0.0, shared))
+    assert keys_of(res) == []
+    assert not read_target(shared).present
+    assert "місця" in res.status
 
 
 def test_search_reports_death_and_holds_tab_that_frame(real_frame, search_cfg):
@@ -103,6 +112,16 @@ def test_attack_silent_without_target(real_frame, search_cfg, attack_cfg):
     assert keys_of(res) == []
 
 
+def test_attack_waits_until_start_position_is_checked(real_frame, attack_cfg):
+    shared = {
+        SHARED_COMBAT_READY: False,
+        SHARED_TARGET: type("Target", (), {"present": True})(),
+    }
+    res = AttackPipeline(attack_cfg).process(ctx_for(real_frame, 0.0, shared))
+    assert keys_of(res) == []
+    assert "місця" in res.status
+
+
 def test_attack_hits_new_target_immediately(real_frame, search_cfg, attack_cfg):
     """Після зміни цілі перший удар іде одразу, не чекаючи інтервалу."""
     empty = set_bar_fill(real_frame, *TARGET_BAR, 0.0)
@@ -144,15 +163,26 @@ def test_loot_presses_up_to_max_when_ground_has_labels(real_frame, search_cfg, l
     assert pressed == [loot_cfg.key] * loot_cfg.max_presses
 
 
-def test_loot_stops_early_when_ground_empty(real_frame, search_cfg, loot_cfg):
-    """Нічого не лежить — не витрачаємо решту натискань."""
+def test_loot_guarantees_configured_presses_when_ground_looks_empty(real_frame, search_cfg, loot_cfg):
+    """Порожній центр не доказ: труп може бути збоку, а персонаж — ще бігти до нього."""
     dead = set_bar_fill(real_frame, *TARGET_BAR, 0.0)
     shared = {"_search": TargetSearchPipeline(search_cfg)}
     loot = LootPipeline(loot_cfg)
     loot.process(attack_ctx(real_frame, search_cfg, 0.0, shared))
     loot.process(attack_ctx(real_frame, search_cfg, 0.1, shared))
     loot.process(attack_ctx(real_frame, search_cfg, 1.0, shared, dead))
-    assert loot_run(loot, search_cfg, real_frame, dead, shared, 1.4) == []
+    assert loot_run(loot, search_cfg, real_frame, dead, shared, 1.4) == [loot_cfg.key] * loot_cfg.max_presses
+
+
+def test_loot_can_trust_empty_ground_after_smaller_minimum(real_frame, search_cfg, loot_cfg):
+    cfg = loot_cfg.model_copy(update={"min_presses": 2})
+    dead = set_bar_fill(real_frame, *TARGET_BAR, 0.0)
+    shared = {"_search": TargetSearchPipeline(search_cfg)}
+    loot = LootPipeline(cfg)
+    loot.process(attack_ctx(real_frame, search_cfg, 0.0, shared))
+    loot.process(attack_ctx(real_frame, search_cfg, 0.1, shared))
+    loot.process(attack_ctx(real_frame, search_cfg, 1.0, shared, dead))
+    assert loot_run(loot, search_cfg, real_frame, dead, shared, 1.4) == [cfg.key] * 2
 
 
 def test_loot_without_check_presses_blindly(real_frame, search_cfg, loot_cfg):
@@ -250,7 +280,8 @@ def test_periodic_multiple_keys_independent():
 
 # ---- конструктор: реєстр і зв'язки ------------------------------------------
 def test_registry_builds_every_pipeline_from_config(bot_config_raw):
-    for spec in bot_config_raw["profiles"]["pw136_1440x1080"]["pipelines"]:
+    profile = next(iter(bot_config_raw["profiles"].values()))
+    for spec in profile["pipelines"]:
         assert build_pipeline(spec["type"], spec["config"], window="test").name == spec["type"]
 
 
@@ -261,8 +292,13 @@ def test_registry_knows_all_types():
 def test_wiring_puts_provider_before_consumers(search_cfg, attack_cfg, loot_cfg):
     messy = [LootPipeline(loot_cfg), AttackPipeline(attack_cfg), TargetSearchPipeline(search_cfg)]
     ordered = [p.name for p in order_pipelines(messy)]
-    assert ordered[0] == "target_search"
-    assert set(ordered[1:]) == {"attack", "loot"}
+    assert ordered == ["target_search", "loot", "attack"]
+
+
+def test_wiring_keeps_combat_at_the_end(search_cfg, attack_cfg):
+    periodic = PeriodicKeysPipeline(PeriodicKeysConfig(keys={"1": 1.0}))
+    messy = [TargetSearchPipeline(search_cfg), AttackPipeline(attack_cfg), periodic]
+    assert [p.name for p in order_pipelines(messy)] == ["periodic_keys", "target_search", "attack"]
 
 
 def test_wiring_rejects_consumer_without_provider(attack_cfg):

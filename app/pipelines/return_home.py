@@ -32,7 +32,7 @@ from app.pipelines.base import Pipeline, PipelineConfig, PipelineContext
 from app.pipelines.registry import register
 from app.pipelines.shared import (
     SHARED_HOME, SHARED_POS, Position, busy_reasons, is_mounted, read_altitude, read_position,
-    read_target, set_busy, set_mounted,
+    read_target, set_busy, set_combat_ready, set_mounted,
 )
 from app.vision.autopath import AutopathConfig, handle_x_for, read_autopath
 from app.vision.template import TemplateSpec, find_template
@@ -176,6 +176,7 @@ class ReturnHomePipeline(Pipeline):
         self.flying_trip = False      # цю дорогу долаємо в повітрі
         self.verified = 0
         self.closed_at = 0.0
+        self.combat_unlocked = False   # на старті спершу підтверджуємо місце фарму
 
     # ---- дані -----------------------------------------------------------------
     def _home(self, ctx: PipelineContext) -> Position | None:
@@ -198,6 +199,9 @@ class ReturnHomePipeline(Pipeline):
 
     # ---- цикл -------------------------------------------------------------------
     def process(self, ctx: PipelineContext) -> PipelineResult:
+        # Закрито за замовчуванням на кожному кадрі. _idle відкриє бій лише коли
+        # координати підтверджені й ми на місці, або коли добиваємо вже початий бій.
+        set_combat_ready(ctx.shared, False)
         pos = read_position(ctx.shared)
         home = self._home(ctx)
         if self.state is ReturnState.IDLE:
@@ -273,6 +277,8 @@ class ReturnHomePipeline(Pipeline):
         off = self._wrong_height(ctx)
         self.for_height = away <= cfg.max_distance
         if away <= cfg.max_distance and off is None:
+            self.combat_unlocked = True
+            set_combat_ready(ctx.shared, True)
             return PipelineResult.idle()
         why = (f"висота {off:+.0f} від потрібної {cfg.farm_altitude}" if self.for_height
                else f"далеко від місця ({away:.0f})")
@@ -280,7 +286,8 @@ class ReturnHomePipeline(Pipeline):
             return PipelineResult.idle(f"{why} · нова спроба через {self.retry_at - ctx.now:.0f}с")
         if cfg.only_out_of_combat:
             target = read_target(ctx.shared)
-            if target is not None and target.present:
+            if self.combat_unlocked and target is not None and target.present:
+                set_combat_ready(ctx.shared, True)
                 return PipelineResult.idle(f"{why} · добиваю ціль")
         others = busy_reasons(ctx.shared) - {BUSY}
         if others:

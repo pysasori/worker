@@ -26,6 +26,9 @@ _EPS = 1e-6
 class LootConfig(PipelineConfig):
     key: str = Field(default="f2", title="Клавіша підбору")
     max_presses: int = Field(default=5, ge=1, title="Натискань максимум")
+    min_presses: int = Field(default=5, ge=1, title="Натискань гарантовано",
+                             description="до цієї кількості не вірити порожній землі: "
+                                         "персонаж може ще бігти до трупа")
     interval: float = Field(default=0.4, ge=0, title="Інтервал, с")
     corpse_delay: float = Field(default=0.3, ge=0, title="Пауза після смерті, с",
                                 description="поки випадає лут")
@@ -38,6 +41,7 @@ class LootPipeline(Pipeline):
     type_name = "loot"
     label = "Збір лута"
     category = "loot"
+    run_order = 150
     config_model = LootConfig
     requires = frozenset({SHARED_TARGET})
 
@@ -72,13 +76,19 @@ class LootPipeline(Pipeline):
         if ctx.now < self.ready_at - _EPS or ctx.now - self.last_press < cfg.interval - _EPS:
             return PipelineResult(status=f"збираю лут ({cfg.max_presses - self.pending + 1}/{cfg.max_presses})")
 
-        if cfg.check.enabled:
+        pressed_before = cfg.max_presses - self.pending
+        # Центральний квадрат не бачить предмет збоку, а персонаж після першого F2
+        # часто ще лише біжить до трупа. Тому перші min_presses гарантовані. Лише
+        # після них можна довіряти «порожній землі»; max_presses усе одно захищає
+        # від нескінченного циклу на предметі, який неможливо підняти.
+        guaranteed = min(cfg.min_presses, cfg.max_presses)
+        if cfg.check.enabled and pressed_before >= guaranteed:
             region = center_square(ctx.frame.size, cfg.check)
             ground = scan_ground(ctx.frame.crop(region), region, cfg.check)
             self.last_ground = ground
             ctx.shared["ground"] = ground
             if not ground.has_loot:
-                done = cfg.max_presses - self.pending
+                done = pressed_before
                 self.pending = 0
                 set_busy(ctx.shared, "loot", False)
                 if done:

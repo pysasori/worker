@@ -512,6 +512,47 @@ def test_guard_restarts_a_session_whose_frames_stopped(running):
     assert svc.orchestrator._slots["A"].session is not before
 
 
+def test_one_window_can_be_stopped_and_started_without_touching_the_other(service, monkeypatch):
+    import app.runtime.orchestrator as mod
+
+    FakeSession.created = []
+    monkeypatch.setattr(mod, "WindowSession", FakeSession)
+    service.config.migrated_windows = True
+    service.config.characters["A"] = CharacterConfig(profile="фарм", enabled=True)
+    service.config.characters["B"] = CharacterConfig(profile="лут", enabled=True)
+    fake_scan(service, {31: ["A"], 32: ["B"]})
+    try:
+        service.start()
+        assert set(service.orchestrator._slots) == {"A", "B"}
+
+        service.stop_window("A")
+        assert set(service.orchestrator._slots) == {"B"}
+        service.scan_once()
+        assert set(service.orchestrator._slots) == {"B"}, \
+            "фоновий сканер не має піднімати локально зупинене вікно"
+
+        service.start_window("A")
+        assert set(service.orchestrator._slots) == {"A", "B"}
+    finally:
+        service.stop()
+
+
+def test_one_window_can_start_while_whole_bot_is_stopped(service, monkeypatch):
+    import app.runtime.orchestrator as mod
+
+    FakeSession.created = []
+    monkeypatch.setattr(mod, "WindowSession", FakeSession)
+    service.config.migrated_windows = True
+    service.config.characters["A"] = CharacterConfig(profile="фарм", enabled=True)
+    service.config.characters["B"] = CharacterConfig(profile="лут", enabled=True)
+    fake_scan(service, {31: ["A"], 32: ["B"]})
+    try:
+        service.start_window("A")
+        assert set(service.orchestrator._slots) == {"A"}
+    finally:
+        service.stop()
+
+
 def test_guard_does_not_touch_a_moving_or_disconnected_session(running):
     svc = running
     for now, tick in ((1000.0, 1), (1100.0, 2), (1200.0, 3)):

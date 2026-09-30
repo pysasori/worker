@@ -19,7 +19,7 @@ from app.capture.window_finder import WindowMatch, find_windows, resolve_window
 from app.config.loader import load_config, save_config
 from app.config.schemas import BotConfig, CharacterConfig, WindowConfig
 from app.core.exceptions import BotError, ConfigError, WindowNotFoundError
-from app.core.logging import window_logger
+from app.core.logging import ring_buffer, window_logger
 from app.core.settings import settings
 from app.input.win32 import Win32MessageInput
 from app.pipelines import config_schema, get_pipeline_class, known_types
@@ -39,6 +39,9 @@ class BotService:
         self.config: BotConfig = load_config(self.config_path)
         self.orchestrator: Orchestrator | None = None
         self.dry_run = False
+        # None = працюють усі ввімкнені персонажі; set = лише вибрані локальними
+        # кнопками. Фільтр потрібен, щоб сканер не підняв назад окремо зупинене вікно.
+        self._run_filter: set[str] | None = None
         # зупинку руками наглядач поважає і бота назад не піднімає
         self.stopped_by_user = False
         self._lock = threading.RLock()
@@ -246,6 +249,8 @@ class BotService:
             char = self.config.characters.get(f.nick)
             if char is None or not char.enabled:
                 continue
+            if self._run_filter is not None and f.nick not in self._run_filter:
+                continue
             if f.nick in taken:                       # два клієнти з одним ніком — другий пропускаємо
                 continue
             taken.add(f.nick)
@@ -288,6 +293,7 @@ class BotService:
                 "type": type_name,
                 "label": cls.label or type_name,
                 "category": cls.category,
+                "run_order": cls.run_order,
                 "provides": sorted(cls.provides),
                 "requires": sorted(cls.requires),
                 "schema": config_schema(type_name),
@@ -306,11 +312,40 @@ class BotService:
                 return
             self.dry_run = dry_run
             self.stopped_by_user = False
+            self._run_filter = set(only) if only is not None else None
             if not self.found:
                 self.scan_once()                      # перший «Запустити» не чекає фонового скану
-            self.orchestrator = Orchestrator(self.config, dry_run=dry_run, only=only,
+            self.orchestrator = Orchestrator(self.config, dry_run=dry_run,
                                              windows=self._desired())
             self.orchestrator.start()
+
+    def start_window(self, name: str, dry_run: bool = False) -> None:
+        """Запустити лише одного персонажа, не змінюючи його постійну галочку enabled."""
+        with self._lock:
+            if not self.found:
+                self.scan_once()
+            char = self.config.characters.get(name)
+            if char is None:
+                raise BotError(f"персонажа '{name}' нема в конфізі")
+            if not char.enabled:
+                raise BotError(f"персонаж '{name}' вимкнений — постав галочку «запускати»")
+            if not any(f.nick == name for f in self.found):
+                raise WindowNotFoundError(f"вікно персонажа {name} не знайдено")
+            if not self.is_running():
+                self.start(dry_run=dry_run, only=[name])
+                return
+            active = {s.window for s in self.orchestrator.statuses()}
+            self._run_filter = active | {name}
+            self.orchestrator.sync(self._desired())
+
+    def stop_window(self, name: str) -> None:
+        """Зупинити одну сесію; решта продовжує працювати."""
+        with self._lock:
+            if not self.is_running():
+                return
+            active = {s.window for s in self.orchestrator.statuses()}
+            self._run_filter = active - {name}
+            self.orchestrator.sync(self._desired())
 
     def stop(self, by_user: bool = True) -> None:
         with self._lock:
@@ -318,6 +353,16 @@ class BotService:
             if self.orchestrator:
                 self.orchestrator.stop()
                 self.orchestrator = None
+            self._run_filter = None
+
+    def events(self, window: str | None = None, level: str | None = None,
+              limit: int = 200) -> list[dict[str, Any]]:
+        """
+        Останні події логу — те, що бот РЕАЛЬНО вирішив і чому, а не тільки поточний
+        статус-рядок. Живе в пам'яті процесу (RingBufferHandler), тому доступне навіть
+        якщо ніхто не перенаправляв stdout у файл.
+        """
+        return [e.public() for e in ring_buffer.recent(window=window, level=level, limit=limit)]
 
     def state(self) -> dict[str, Any]:
         with self._lock:
@@ -339,6 +384,7 @@ class BotService:
                     "raw": f.raw if f else "",
                     "profile": char.profile if char else None,
                     "enabled": bool(char and char.enabled),
+                    "active": st is not None,
                     "connected": bool(st and st.connected),
                     "tick": st.tick if st else 0,
                     "fps": round(st.fps, 1) if st else 0.0,

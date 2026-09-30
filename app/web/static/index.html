@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/app.css?v=17">
+  <link rel="stylesheet" href="/static/app.css?v=24">
 </head>
 <body>
 <header>
@@ -47,6 +47,21 @@
       <div id="appSettings" class="pipe-body" style="display:grid; gap:10px; padding:0"></div>
     </div>
   </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Події</h2>
+      <span id="eventsWho" class="hint"></span>
+      <div class="spacer"></div>
+      <button id="btnEventsRefresh" class="quiet">оновити</button>
+    </div>
+    <div class="panel-body">
+      <p class="hint">Не статус, а те, що бот РЕАЛЬНО вирішив і чому — тут видно кожен зліт,
+        політ, смерть чи «банок нема», з часом. Оновлюється саме собою.</p>
+      <label class="chk" style="margin-bottom:8px"><input type="checkbox" id="eventsAll"> усі персонажі разом</label>
+      <div id="eventList" class="events-list"></div>
+    </div>
+  </section>
   </div>
 
   <section class="panel">
@@ -58,7 +73,7 @@
     </div>
     <div class="panel-body">
       <div id="profileBar" class="profile-bar"></div>
-      <p class="hint">Блоки виконуються в порядку залежностей: хто віддає дані — раніше за тих, хто їх читає.</p>
+      <p class="hint">Стрілки задають пріоритет усередині етапу. Пошук цілі, збір луту й атака зафіксовані в кінці.</p>
       <div id="pipelines" style="display:grid; gap:8px"></div>
     </div>
   </section>
@@ -97,6 +112,6 @@
 </main>
 
 <div id="toast"></div>
-<script src="/static/app.js?v=17"></script>
+<script src="/static/app.js?v=24"></script>
 </body>
 </html>

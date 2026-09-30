@@ -75,6 +75,12 @@ def create_app(config_path: Path | None = None, scan: bool = True) -> FastAPI:
     def state() -> dict[str, Any]:
         return service.state()
 
+    @app.get("/api/log")
+    def log(window: str = Query(default=""), level: str = Query(default=""),
+            limit: int = Query(default=200, ge=1, le=2000)) -> list[dict[str, Any]]:
+        """Останні події: чому бот зробив саме це. window="" — усі вікна разом."""
+        return service.events(window=window or None, level=level or None, limit=limit)
+
     @app.post("/api/control/start")
     def start(req: StartRequest) -> dict[str, Any]:
         service.start(dry_run=req.dry_run, only=req.windows)
@@ -83,6 +89,16 @@ def create_app(config_path: Path | None = None, scan: bool = True) -> FastAPI:
     @app.post("/api/control/stop")
     def stop() -> dict[str, Any]:
         service.stop()
+        return service.state()
+
+    @app.post("/api/windows/{name}/start")
+    def start_window(name: str, req: StartRequest) -> dict[str, Any]:
+        service.start_window(name, dry_run=req.dry_run)
+        return service.state()
+
+    @app.post("/api/windows/{name}/stop")
+    def stop_window(name: str) -> dict[str, Any]:
+        service.stop_window(name)
         return service.state()
 
     # ---- вікна ---------------------------------------------------------------

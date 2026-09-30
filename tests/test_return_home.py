@@ -12,7 +12,7 @@ from app.pipelines.actions import ClickAt
 from app.pipelines.base import Frame, PipelineContext
 from app.pipelines.return_home import ReturnHomeConfig, ReturnHomePipeline, ReturnState
 from app.pipelines.shared import (
-    SHARED_HOME, SHARED_POS, Position, TargetInfo, busy_reasons, set_busy,
+    SHARED_HOME, SHARED_POS, Position, TargetInfo, busy_reasons, combat_ready, set_busy,
 )
 from app.vision.schemas import BarReading
 from tests.conftest import FIXTURES
@@ -51,20 +51,32 @@ def test_stays_when_close_to_home(list_closed):
     pipe, shared = ReturnHomePipeline(cfg()), {}
     res = step(pipe, list_closed, 0, shared, Position(x=236, y=560, known=True))
     assert res.actions == [] and pipe.state is ReturnState.IDLE
+    assert combat_ready(shared)
 
 
 def test_does_nothing_without_coordinates(list_closed):
     pipe, shared = ReturnHomePipeline(cfg()), {}
     res = step(pipe, list_closed, 0, shared, Position())
     assert res.actions == []
+    assert not combat_ready(shared), "до підтвердження координат бій не починаємо"
 
 
-def test_finishes_the_fight_first(list_closed):
+def test_startup_returns_before_touching_an_accidental_target(list_closed):
     pipe, shared = ReturnHomePipeline(cfg()), {}
     shared["target"] = TargetInfo(present=True, bar=BarReading(present=True, filled=208, total=208))
     res = step(pipe, list_closed, 0, shared, FAR)
+    assert clicks(res), "на старті не б'ємо випадкового моба, а одразу повертаємось"
+    assert not combat_ready(shared)
+
+
+def test_finishes_an_existing_fight_after_start_check(list_closed):
+    pipe, shared = ReturnHomePipeline(cfg()), {}
+    step(pipe, list_closed, 0, shared, HOME)  # стартову позицію перевірено, бій дозволено
+    shared["target"] = TargetInfo(present=True, bar=BarReading(present=True, filled=208, total=208))
+    res = step(pipe, list_closed, 1, shared, FAR)
     assert res.actions == []
     assert "добиваю ціль" in res.status
+    assert combat_ready(shared)
 
 
 def test_waits_for_loot(list_closed):

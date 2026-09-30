@@ -44,6 +44,13 @@ def test_reads_real_frame():
     assert abs(reading.percent - 82) <= 2
 
 
+def test_wide_hp_numbers_do_not_cut_a_full_bar_in_half():
+    """«544/544» має широкий темний контур: це напис, а не кінець HP."""
+    frame = Image.open(FIXTURES / "frame_1440_nav_closed.png").convert("RGB")
+    reading = read_player_hp(frame)
+    assert reading.percent >= 98
+
+
 @pytest.mark.parametrize("fraction", [1.0, 0.75, 0.5, 0.2])
 def test_reads_any_level(fraction):
     reading = read_player_hp(frame_with_hp(fraction))

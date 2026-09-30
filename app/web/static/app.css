@@ -197,13 +197,16 @@ input:focus, select:focus {
 /* фіксована сітка шапки: рівні відступи незалежно від довжини назви */
 .pipe-head {
   display: grid;
-  grid-template-columns: 34px minmax(0, 1fr) auto auto;
+  grid-template-columns: 34px minmax(0, 1fr) auto auto auto;
   align-items: center; gap: var(--gap-s);
   padding: 10px 12px;
 }
 .pipe-head .name { font-weight: 600; font-size: 13.5px; }
 .pipe-head .sub { font-size: 11px; color: var(--text-faint); }
 .pipe-head .wires { display: flex; gap: 5px; }
+.pipe-order { display: flex; gap: 4px; }
+.order-btn { width: 30px; height: 30px; padding: 0; font-size: 16px; }
+.order-btn:disabled { opacity: .25; cursor: default; }
 
 .pipe-body {
   padding: 0 12px 12px;
@@ -268,8 +271,12 @@ fieldset.group-box .inner { display: grid; grid-template-columns: repeat(2, minm
 }
 
 /* сітка комірок рюкзака (продаж луту) */
-.cells { display: flex; flex-direction: column; gap: 6px; }
+.cells { display: flex; flex-direction: column; gap: 5px; min-width: max-content; }
 .cells-row { display: flex; gap: 6px; align-items: center; }
+.cells-header { color: var(--text-faint); font-size: 10px; text-align: center; }
+.cells-axis { width: 26px; flex: 0 0 26px; text-align: center; color: var(--text-faint); font-size: 11px; }
+.cells-col { width: 30px; flex: 0 0 30px; }
+.cells-row-caption { padding-left: 4px; font-size: 10px; }
 .cell {
   width: 30px; height: 30px; padding: 0;
   border-radius: 8px; border: 1px solid var(--line);
@@ -277,20 +284,40 @@ fieldset.group-box .inner { display: grid; grid-template-columns: repeat(2, minm
   font: inherit; font-size: 12px; cursor: pointer;
 }
 .cell:hover { border-color: var(--accent); color: var(--text); }
-.cell.on { background: var(--accent); border-color: var(--accent); color: #06212b; font-weight: 600; }
+.cell.on { background: var(--accent); border-color: var(--accent); color: #06212b; font-weight: 800; font-size: 16px; }
 .cells-row-btn { height: 30px; padding: 0 10px; font-size: 12px; }
+.cells-actions { display: flex; gap: 6px; align-items: center; margin: 3px 0 0 32px; }
+.cells-actions button { min-height: 28px; padding: 3px 9px; font-size: 11px; }
+.cells-count { color: var(--text-faint); font-size: 11px; }
 
 
 /* картки персонажів і пул профілів */
 .window-card.offline { opacity: .6; }
+.window-run { padding: 4px 9px; min-height: 28px; font-size: 12px; }
 .card-line { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; margin-top: 6px; }
 .card-line select { width: 100%; }
 .card-on { white-space: nowrap; }
 .profile-bar { display: grid; gap: 6px; margin-bottom: 10px; }
-.profile-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; gap: 6px; }
+.profile-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.profile-row select { width: 100%; }
 
 
 .col { display: grid; gap: var(--gap); align-content: start; min-width: 0; }
 .pin-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; margin-top: 6px; align-items: center; }
 .pin-note { font-size: 12px; opacity: .8; margin-top: 6px; }
 .pin-note.warn { color: var(--warn, #e6b450); opacity: 1; }
+
+/* стрічка подій */
+.events-list {
+  display: flex; flex-direction: column-reverse; gap: 2px;
+  max-height: 320px; overflow-y: auto;
+  background: var(--bg); border: 1px solid var(--line-soft); border-radius: var(--radius-s);
+  padding: 8px 10px;
+  font: 12px/1.5 "Consolas", "SFMono-Regular", ui-monospace, monospace;
+}
+.event-line { display: flex; gap: 8px; white-space: pre-wrap; word-break: break-word; }
+.event-line .t { color: var(--text-faint); flex: none; }
+.event-line .w { color: var(--accent); flex: none; }
+.event-line.warn { color: var(--warn); }
+.event-line.warn .w { color: var(--warn); }
+.events-empty { color: var(--text-faint); }

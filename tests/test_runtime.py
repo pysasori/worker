@@ -8,6 +8,7 @@ from app.config.loader import load_config
 from app.core.settings import settings
 from app.input.abstract import NullInput
 from app.pipelines.actions import PressKey, Wait
+from app.pipelines.shared import combat_ready
 from app.runtime.executor import ActionExecutor
 from app.runtime.session import WindowSession
 
@@ -36,6 +37,11 @@ def make_session(image: Image.Image) -> tuple[WindowSession, FakeCapture, NullIn
         if spec.type == "target_search":
             spec.config["names"] = {**spec.config.get("names", {}), "enabled": False}
     session = WindowSession(config.windows[0], config, dry_run=False)
+    # Загальні runtime-тести моделюють уже перевірене місце фарму. Окремо стартовий
+    # бойовий шлюз перевіряється в test_return_home/test_pipelines.
+    position = next((p for p in session.pipelines if p.name == "position"), None)
+    if position is not None and position.home is not None:
+        position.pos = position.home.model_copy(update={"known": True})
     capture, sink = FakeCapture(image), NullInput()
     session.capture = capture
     session.input = sink
@@ -55,6 +61,26 @@ def test_one_frame_per_tick_for_all_pipelines(real_frame):
     # рівно стільки, скільки увімкнено в конфізі (ремонт може бути тимчасово вимкнений)
     enabled = [sp for sp in config.specs_for(config.windows[0]) if sp.enabled]
     assert len(session.pipelines) == len(enabled)
+
+
+def test_combat_tail_runs_after_startup_checks(real_frame):
+    session, _, _ = make_session(real_frame)
+    names = [pipeline.name for pipeline in session.pipelines]
+    assert names[-1] == "attack"
+    assert names.index("return_home") < names.index("target_search") < names.index("attack")
+
+
+def test_disabled_return_home_skips_location_gate():
+    config = load_config(settings.CONFIG_PATH)
+    window = config.windows[0]
+    for spec in config.profiles[window.profile].pipelines:
+        if spec.type == "return_home":
+            spec.enabled = False
+    session = WindowSession(window, config)
+    names = [pipeline.name for pipeline in session.pipelines]
+    assert "return_home" not in names
+    assert {"target_search", "attack"} <= set(names)
+    assert combat_ready(session.shared), "без повернення бій не має чекати перевірку місця"
 
 
 def test_actions_reach_the_input_layer(real_frame):

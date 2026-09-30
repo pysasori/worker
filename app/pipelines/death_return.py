@@ -230,8 +230,9 @@ class DeathReturnPipeline(Pipeline):
     def _idle(self, ctx: PipelineContext) -> PipelineResult:
         cfg: DeathReturnConfig = self.config
         if not self._dead(ctx.frame.image):
-            if self.seen:                                # вікно блимнуло й зникло
-                set_busy(ctx.shared, BUSY, False)
+            # Скидаємо безумовно: після перепідключення/reset лічильник `seen`
+            # вже нульовий, але старий busy міг лишитися у спільному стані.
+            set_busy(ctx.shared, BUSY, False)
             self.seen = 0
             events = self._watch_hp(ctx)
             return PipelineResult(status="", events=events) if events else PipelineResult.idle()

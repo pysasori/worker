@@ -14,10 +14,11 @@ from app.pipelines.actions import (  # noqa: F401
     Action, ClickAt, PipelineResult, PressKey, TypeText, Wait,
 )
 from app.pipelines.shared import (  # noqa: F401
-    SHARED_ALT, SHARED_BUSY, SHARED_PET, SHARED_PET_FOOD, SHARED_PLAYER, SHARED_POS, SHARED_TARGET,
-    Altitude, Position, TargetInfo, busy_reasons, read_altitude, read_player, read_position,
+    SHARED_ALT, SHARED_BUSY, SHARED_COMBAT_READY, SHARED_PET, SHARED_PET_FOOD, SHARED_PLAYER,
+    SHARED_POS, SHARED_TARGET, Altitude, Position, TargetInfo, busy_reasons, combat_ready,
+    read_altitude, read_player, read_position,
     read_target,
-    set_busy, write_target,
+    set_busy, set_combat_ready, write_target,
 )
 from app.pipelines.registry import (  # noqa: F401
     build_pipeline, config_schema, get_pipeline_class, known_types, register,
@@ -40,13 +41,15 @@ from app.pipelines.heal import HealPipeline  # noqa: F401
 from app.pipelines.altitude_hold import AltitudeHoldPipeline  # noqa: F401
 from app.pipelines.sell import SellPipeline  # noqa: F401
 from app.pipelines.death_return import DeathReturnPipeline  # noqa: F401
+from app.pipelines.form_keep import FormKeepPipeline  # noqa: F401
 
 __all__ = [
     "Pipeline", "PipelineConfig", "PipelineContext", "Frame",
     "Action", "ClickAt", "PipelineResult", "PressKey", "TypeText", "Wait",
-    "SHARED_PET", "SHARED_PET_FOOD", "SHARED_TARGET", "TargetInfo", "read_target", "write_target",
+    "SHARED_COMBAT_READY", "SHARED_PET", "SHARED_PET_FOOD", "SHARED_TARGET", "TargetInfo",
+    "combat_ready", "read_target", "set_combat_ready", "write_target",
     "build_pipeline", "config_schema", "get_pipeline_class", "known_types", "register",
     "describe_wiring", "order_pipelines",
-    "TargetSearchPipeline", "AttackPipeline", "LootPipeline",
+    "TargetSearchPipeline", "AttackPipeline", "LootPipeline", "FormKeepPipeline",
     "PetHealPipeline", "PetFeedPipeline", "PetSummonPipeline", "PeriodicKeysPipeline", "RepairPipeline", "DialogGuardPipeline",
 ]

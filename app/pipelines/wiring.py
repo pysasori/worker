@@ -38,16 +38,19 @@ def order_pipelines(pipelines: list[Pipeline], window: str = "") -> list[Pipelin
                 f"пайплайн '{p.name}' потребує {sorted(missing)}, але цього ніхто не віддає{where}. "
                 f"Додай у профіль пайплайн, що дає {sorted(missing)}")
 
-    remaining = list(pipelines)
+    # Незалежні сервісні/навігаційні блоки проходять раніше за бойовий хвіст.
+    # Індекс зберігає порядок конфіга для блоків з однаковим run_order.
+    remaining = list(enumerate(pipelines))
     satisfied: set[str] = set()
     ordered: list[Pipeline] = []
     while remaining:
-        for i, p in enumerate(remaining):
-            if p.requires <= satisfied:
-                ordered.append(remaining.pop(i))
-                satisfied |= p.provides
-                break
-        else:
-            stuck = ", ".join(f"{p.name}({sorted(p.requires)})" for p in remaining)
+        ready = [(p.run_order, original, i, p) for i, (original, p) in enumerate(remaining)
+                 if p.requires <= satisfied]
+        if not ready:
+            stuck = ", ".join(f"{p.name}({sorted(p.requires)})" for _, p in remaining)
             raise ConfigError(f"кільцева залежність між пайплайнами{where}: {stuck}")
+        _, _, i, pipeline = min(ready)
+        remaining.pop(i)
+        ordered.append(pipeline)
+        satisfied |= pipeline.provides
     return ordered

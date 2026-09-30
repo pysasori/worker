@@ -88,6 +88,10 @@ class WindowSession:
             self.log.warning("розмір клієнта %sx%s, а профіль '%s' калібровано під %sx%s — "
                              "координати можуть не збігтись", size[0], size[1], self.cfg.profile,
                              expected[0], expected[1])
+        # Після втрати/повторного знаходження вікна тут могли лишитися старі target,
+        # busy та координати. Пайплайни скидаються нижче, отже і їхню спільну дошку
+        # треба почати заново, інакше живий бот може вічно «чекати: death_return».
+        self.shared.clear()
         for p in self.pipelines:
             p.reset()
         self.status.connected = True

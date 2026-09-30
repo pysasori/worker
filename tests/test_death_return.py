@@ -75,6 +75,17 @@ def test_blinking_death_text_does_not_freeze_the_bot():
     assert busy_reasons(shared) == set(), "вікно зникло — бот знову вільний"
 
 
+def test_alive_character_clears_stale_death_busy_after_pipeline_reset():
+    """Reconnect скидає pipeline, але старий busy не має заморожувати живого персонажа."""
+    from app.pipelines.shared import set_busy
+
+    pipe, shared = DeathReturnPipeline(cfg()), {}
+    set_busy(shared, "death_return", True)
+    pipe.reset()
+    step(pipe, ALIVE, 0.0, shared)
+    assert busy_reasons(shared) == set()
+
+
 def reach_travel(pipe, shared, flight=True, expect=DeathState.TRAVEL):
     die(pipe, shared)
     step(pipe, LIST_CLOSED, 1.0, shared)            # вікно смерті зникло

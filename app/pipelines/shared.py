@@ -23,6 +23,7 @@ SHARED_ALT = "alt"          # висота (третє число там сам�
 SHARED_HOME = "home"        # місце, куди повертатись (Position або None)
 SHARED_PLAYER = "player"    # HP персонажа (BarReading)
 SHARED_MOUNT = "mount"      # чи сидимо верхи: True/False, None — не знаємо
+SHARED_COMBAT_READY = "combat_ready"  # стартову позицію перевірено, можна шукати й бити
 
 
 class TargetInfo(BaseModel):
@@ -103,6 +104,15 @@ def set_busy(shared: dict[str, Any], who: str, busy: bool) -> None:
 def busy_reasons(shared: dict[str, Any]) -> set[str]:
     """Хто саме зараз зайнятий. Порожньо = можна робити свої справи."""
     return set(shared.get(SHARED_BUSY, ()))
+
+
+def set_combat_ready(shared: dict[str, Any], ready: bool) -> None:
+    """Відкрити/закрити бойовий шлюз. Якщо блока навігації нема, шлюз вважається відкритим."""
+    shared[SHARED_COMBAT_READY] = ready
+
+
+def combat_ready(shared: dict[str, Any]) -> bool:
+    return bool(shared.get(SHARED_COMBAT_READY, True))
 
 
 def set_mounted(shared: dict[str, Any], mounted: bool | None) -> None:

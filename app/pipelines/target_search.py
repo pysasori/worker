@@ -18,7 +18,7 @@ from app.core.geometry import Region
 from app.pipelines.actions import PipelineResult, PressKey
 from app.pipelines.base import Pipeline, PipelineConfig, PipelineContext
 from app.pipelines.registry import register
-from app.pipelines.shared import SHARED_TARGET, TargetInfo, busy_reasons, write_target
+from app.pipelines.shared import SHARED_TARGET, TargetInfo, busy_reasons, combat_ready, write_target
 from app.vision.bars import scan_bar
 from app.vision.nameplate import (
     HostileCheckConfig, TargetKind, classify_target, name_region,
@@ -83,6 +83,7 @@ class TargetSearchPipeline(Pipeline):
     type_name = "target_search"
     label = "Пошук цілі"
     category = "combat"
+    run_order = 100
     config_model = TargetSearchConfig
     provides = frozenset({SHARED_TARGET})
 
@@ -108,6 +109,17 @@ class TargetSearchPipeline(Pipeline):
 
     def process(self, ctx: PipelineContext) -> PipelineResult:
         cfg: TargetSearchConfig = self.config
+        if not combat_ready(ctx.shared):
+            self.confirmed = False
+            self.skip_current = False
+            self.full_width = None
+            self.acquired_at = None
+            self.alive_streak = 0
+            self.last_filled = -1
+            self.friendly_streak = 0
+            self.seen_name = ""
+            write_target(ctx.shared, TargetInfo(updated_at=ctx.now, updated_tick=ctx.tick))
+            return PipelineResult.idle("чекаю перевірку місця")
         reading = scan_bar(ctx.frame.crop(cfg.region), cfg.region, cfg.bar, total=self.full_width)
         res = PipelineResult()
 
