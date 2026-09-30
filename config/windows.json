@@ -384,6 +384,752 @@
           }
         }
       ]
+    },
+    "Дру на волках 22-25 (1280x720)": {
+      "client_size": [
+        1280,
+        720
+      ],
+      "pipelines": [
+        {
+          "type": "death_return",
+          "enabled": true,
+          "config": {
+            "use_flight": true,
+            "flight_key": "9",
+            "flight_height": 70,
+            "land_wait": 10.0,
+            "climb_to": 0,
+            "climb_timeout": 30.0,
+            "after_respawn": 12.0,
+            "takeoff_delay": 3.0,
+            "arrive_distance": 6.0,
+            "travel_timeout": 900.0,
+            "stuck_after": 40.0,
+            "retries": 5,
+            "verify_reads": 2,
+            "verify_timeout": 25.0,
+            "fresh_pos_timeout": 60.0,
+            "confirm_frames": 3,
+            "check_every": 0.5,
+            "step_timeout": 10.0,
+            "hover_delay": 0.35,
+            "death_signs": [
+              {
+                "name": "respawn_city.png",
+                "threshold": 0.75,
+                "area": {
+                  "x": 340,
+                  "y": 200,
+                  "w": 600,
+                  "h": 320
+                }
+              },
+              {
+                "name": "respawn_here.png",
+                "threshold": 0.75,
+                "area": {
+                  "x": 340,
+                  "y": 200,
+                  "w": 600,
+                  "h": 320
+                }
+              },
+              {
+                "name": "death_text.png",
+                "threshold": 0.75,
+                "area": {
+                  "x": 340,
+                  "y": 200,
+                  "w": 600,
+                  "h": 320
+                }
+              }
+            ],
+            "snapshot_dir": "logs/shots",
+            "city_button": {
+              "name": "respawn_city.png",
+              "threshold": 0.8,
+              "area": {
+                "x": 340,
+                "y": 200,
+                "w": 600,
+                "h": 320
+              }
+            },
+            "autopath": {
+              "title": {
+                "name": "autopath_title.png",
+                "threshold": 0.8,
+                "area": {
+                  "x": 20,
+                  "y": 10,
+                  "w": 1240,
+                  "h": 700
+                }
+              },
+              "track_y": 43,
+              "track_from": -80,
+              "track_to": 105,
+              "ref_dx": -20,
+              "ref_height": 22,
+              "per_px": 0.525
+            },
+            "route": {
+              "max_distance": 15.0,
+              "arrive_distance": 3.0,
+              "point_name": "фарм",
+              "only_out_of_combat": true,
+              "run_timeout": 180.0,
+              "stuck_after": 10.0,
+              "retries": 3,
+              "cooldown": 30.0,
+              "land_key": "9",
+              "land_above": 6.0,
+              "ground_reads": 15,
+              "fly": false,
+              "fly_beyond": 40.0,
+              "fly_height": 55,
+              "idle_walk_after": 180.0,
+              "verify_reads": 2,
+              "verify_timeout": 20.0,
+              "farm_altitude": 0,
+              "altitude_gap": 8.0,
+              "takeoff_delay": 3.0,
+              "land_wait": 8.0,
+              "min_ground": 5,
+              "step_timeout": 5.0,
+              "hover_delay": 0.3,
+              "step_delay": 0.6,
+              "button": {
+                "name": "nav_button.png",
+                "threshold": 0.8,
+                "area": {
+                  "x": 990,
+                  "y": 0,
+                  "w": 290,
+                  "h": 260
+                }
+              },
+              "title": {
+                "name": "nav_list_title.png",
+                "threshold": 0.85,
+                "area": null
+              },
+              "pane": {
+                "x": 98,
+                "y": 39,
+                "w": 137,
+                "h": 293
+              },
+              "close": {
+                "x": 228,
+                "y": -1
+              },
+              "text_threshold": 140,
+              "min_ratio": 0.6,
+              "autopath": {
+                "title": {
+                  "name": "autopath_title.png",
+                  "threshold": 0.8,
+                  "area": {
+                    "x": 20,
+                    "y": 10,
+                    "w": 1240,
+                    "h": 700
+                  }
+                },
+                "track_y": 43,
+                "track_from": -80,
+                "track_to": 105,
+                "ref_dx": -20,
+                "ref_height": 22,
+                "per_px": 0.525
+              },
+              "ocr": {
+                "enabled": true,
+                "engine": "tesseract",
+                "lang": "rus",
+                "psm": 7,
+                "scale": 4,
+                "tesseract_cmd": "C:\\Program Files\\Tesseract-OCR\\tesseract.exe",
+                "tessdata_dir": "F:\\PythonProjects\\Games\\PW\\PW136AutoBot\\backend\\models\\tessdata"
+              }
+            }
+          }
+        },
+        {
+          "type": "pet_heal",
+          "enabled": true,
+          "config": {
+            "heal_key": "f3",
+            "heal_below": 0.5,
+            "cooldown": 3
+          }
+        },
+        {
+          "type": "pet_feed",
+          "enabled": true,
+          "config": {
+            "feed_key": "f8",
+            "feed_below": 0.5,
+            "cooldown": 40,
+            "give_up_after": 8
+          }
+        },
+        {
+          "type": "pet_summon",
+          "enabled": true,
+          "config": {
+            "summon_key": "f7",
+            "cast_time": 5.0,
+            "cooldown": 8.0,
+            "confirm_frames": 4,
+            "missing_for": 5.0,
+            "give_up_after": 3,
+            "retry_after": 300.0,
+            "only_out_of_combat": true,
+            "settle": 3.0,
+            "hp_region": {
+              "x": 105,
+              "y": 28,
+              "w": 145,
+              "h": 12
+            },
+            "still_area": {
+              "x": 215,
+              "y": 110,
+              "w": 850,
+              "h": 500
+            },
+            "hold_for": 15.0,
+            "dismount_key": "9",
+            "move_level": 15.0
+          }
+        },
+        {
+          "type": "position",
+          "enabled": true,
+          "config": {
+            "read_every": 1.0,
+            "forget_after": 5,
+            "max_jump": 30,
+            "min_value": 10,
+            "max_value": 1500,
+            "teleport_reads": 5,
+            "home_x": 456,
+            "home_y": 674,
+            "warn_away": 14,
+            "digits": {
+              "region": {
+                "x": 1068,
+                "y": 22,
+                "w": 78,
+                "h": 14
+              },
+              "color": "white",
+              "pad": 3,
+              "scale": 6
+            },
+            "ocr": {
+              "enabled": true,
+              "engine": "tesseract",
+              "lang": "rus",
+              "psm": 7,
+              "scale": 4,
+              "tesseract_cmd": "C:\\Program Files\\Tesseract-OCR\\tesseract.exe",
+              "tessdata_dir": "F:\\PythonProjects\\Games\\PW\\PW136AutoBot\\backend\\models\\tessdata"
+            }
+          }
+        },
+        {
+          "type": "altitude",
+          "enabled": true,
+          "config": {
+            "read_every": 1.0,
+            "forget_after": 5,
+            "max_jump": 10,
+            "confirm_reads": 2,
+            "digits": {
+              "region": {
+                "x": 1068,
+                "y": 22,
+                "w": 78,
+                "h": 14
+              },
+              "color": "green",
+              "pad": 3,
+              "scale": 6
+            },
+            "ocr": {
+              "enabled": true,
+              "engine": "tesseract",
+              "lang": "rus",
+              "psm": 7,
+              "scale": 4,
+              "tesseract_cmd": "C:\\Program Files\\Tesseract-OCR\\tesseract.exe",
+              "tessdata_dir": "F:\\PythonProjects\\Games\\PW\\PW136AutoBot\\backend\\models\\tessdata"
+            }
+          }
+        },
+        {
+          "type": "altitude_hold",
+          "enabled": false,
+          "config": {
+            "target": 0,
+            "tolerance": 2,
+            "up_key": "space",
+            "down_key": "z",
+            "interval": 1
+          }
+        },
+        {
+          "type": "return_home",
+          "enabled": true,
+          "config": {
+            "max_distance": 12.0,
+            "arrive_distance": 3.0,
+            "point_name": "фарм",
+            "only_out_of_combat": true,
+            "run_timeout": 180.0,
+            "stuck_after": 10.0,
+            "retries": 3,
+            "cooldown": 30.0,
+            "land_key": "9",
+            "land_above": 6.0,
+            "ground_reads": 15,
+            "fly": true,
+            "fly_beyond": 40.0,
+            "fly_height": 55,
+            "idle_walk_after": 180.0,
+            "verify_reads": 2,
+            "verify_timeout": 20.0,
+            "farm_altitude": 0,
+            "altitude_gap": 8.0,
+            "takeoff_delay": 3.0,
+            "land_wait": 8.0,
+            "min_ground": 5,
+            "step_timeout": 5.0,
+            "hover_delay": 0.3,
+            "step_delay": 0.6,
+            "button": {
+              "name": "nav_button.png",
+              "threshold": 0.8,
+              "area": {
+                "x": 990,
+                "y": 0,
+                "w": 290,
+                "h": 260
+              }
+            },
+            "title": {
+              "name": "nav_list_title.png",
+              "threshold": 0.85,
+              "area": null
+            },
+            "pane": {
+              "x": 98,
+              "y": 39,
+              "w": 137,
+              "h": 293
+            },
+            "close": {
+              "x": 228,
+              "y": -1
+            },
+            "text_threshold": 140,
+            "min_ratio": 0.6,
+            "autopath": {
+              "title": {
+                "name": "autopath_title.png",
+                "threshold": 0.8,
+                "area": {
+                  "x": 20,
+                  "y": 10,
+                  "w": 1240,
+                  "h": 700
+                }
+              },
+              "track_y": 43,
+              "track_from": -80,
+              "track_to": 105,
+              "ref_dx": -20,
+              "ref_height": 22,
+              "per_px": 0.525
+            },
+            "ocr": {
+              "enabled": true,
+              "engine": "tesseract",
+              "lang": "rus",
+              "psm": 7,
+              "scale": 4,
+              "tesseract_cmd": "C:\\Program Files\\Tesseract-OCR\\tesseract.exe",
+              "tessdata_dir": "F:\\PythonProjects\\Games\\PW\\PW136AutoBot\\backend\\models\\tessdata"
+            }
+          }
+        },
+        {
+          "type": "target_search",
+          "enabled": true,
+          "config": {
+            "region": {
+              "x": 380,
+              "y": 0,
+              "w": 520,
+              "h": 24
+            },
+            "bar": {
+              "rows": [
+                9,
+                17
+              ],
+              "x0_range": null,
+              "gap": 8,
+              "bright_min": 150,
+              "min_filled": 2,
+              "empty_rgb": [
+                29,
+                54,
+                59
+              ],
+              "empty_tol": 16,
+              "min_span": 120
+            },
+            "target_key": "tab",
+            "drop_key": null,
+            "min_acquire": 2,
+            "stale_after": 12.0,
+            "min_progress": 2,
+            "hostile_check": {
+              "enabled": true,
+              "dy_from": 12,
+              "dy_to": 28,
+              "min_value": 170,
+              "min_diff": 40,
+              "min_pixels": 25
+            },
+            "names": {
+              "enabled": false,
+              "allow": [],
+              "deny": [],
+              "min_ratio": 0.75,
+              "ocr": {
+                "enabled": true,
+                "engine": "tesseract",
+                "lang": "rus",
+                "psm": 7,
+                "scale": 4,
+                "tesseract_cmd": "C:\\Program Files\\Tesseract-OCR\\tesseract.exe",
+                "tessdata_dir": "F:\\PythonProjects\\Games\\PW\\PW136AutoBot\\backend\\models\\tessdata"
+              }
+            },
+            "retarget_delay": 1.0,
+            "confirm_frames": 2,
+            "idle_warn": 120.0,
+            "warn_after_rejects": 8
+          }
+        },
+        {
+          "type": "heal",
+          "enabled": true,
+          "config": {
+            "heal_key": "f6",
+            "heal_below": 0.85,
+            "cooldown": 10,
+            "panic_below": 0.4
+          }
+        },
+        {
+          "type": "attack",
+          "enabled": true,
+          "config": {
+            "key": "f1",
+            "interval": 3,
+            "stop_below": 0
+          }
+        },
+        {
+          "type": "loot",
+          "enabled": true,
+          "config": {
+            "key": "f2",
+            "max_presses": 5,
+            "interval": 0.4,
+            "corpse_delay": 0.3,
+            "check": {
+              "enabled": true,
+              "size": 420,
+              "offset_x": 0,
+              "offset_y": 0
+            }
+          }
+        },
+        {
+          "type": "repair",
+          "enabled": true,
+          "config": {
+            "every": 3600.0,
+            "worn_icon": {
+              "name": "gear_worn.png",
+              "threshold": 0.65,
+              "area": {
+                "x": 1220,
+                "y": 220,
+                "w": 60,
+                "h": 90
+              }
+            },
+            "broken_markers": [
+              {
+                "region": {
+                  "x": 1240,
+                  "y": 240,
+                  "w": 40,
+                  "h": 42
+                },
+                "min_rgb": [
+                  100,
+                  0,
+                  0
+                ],
+                "max_rgb": [
+                  255,
+                  60,
+                  60
+                ],
+                "min_pixels": 25
+              }
+            ],
+            "min_interval": 600.0,
+            "useless_pause": 1800.0,
+            "confirm_damage": 4.0,
+            "idle_before": 2.0,
+            "step_timeout": 9.0,
+            "click_again_after": 3.0,
+            "click_retries": 2,
+            "hover_delay": 0.35,
+            "step_delay": 0.7,
+            "bag_key": "b",
+            "close_key": "esc",
+            "bag_title": {
+              "name": "bag_title.png",
+              "threshold": 0.8,
+              "area": null
+            },
+            "shop_offset": {
+              "x": 22,
+              "y": 424
+            },
+            "shop_icon_search": {
+              "enabled": true,
+              "radius": 45,
+              "step": 3,
+              "box": 25,
+              "ring_box": 33,
+              "fill": {
+                "min_rgb": [
+                  150,
+                  110,
+                  0
+                ],
+                "max_rgb": [
+                  255,
+                  255,
+                  130
+                ],
+                "min_pixels": 140
+              },
+              "ring": {
+                "min_rgb": [
+                  0,
+                  60,
+                  90
+                ],
+                "max_rgb": [
+                  130,
+                  220,
+                  255
+                ],
+                "min_pixels": 60
+              }
+            },
+            "repair_all": {
+              "name": "repair_all.png",
+              "threshold": 0.7,
+              "area": null
+            },
+            "confirm": {
+              "name": "repair_confirm.png",
+              "threshold": 0.7,
+              "area": null
+            },
+            "shop_open": {
+              "name": "shop_title.png",
+              "threshold": 0.7,
+              "area": null
+            }
+          }
+        },
+        {
+          "type": "sell",
+          "enabled": true,
+          "config": {
+            "every": 900.0,
+            "cells": [
+              "4:1",
+              "4:2",
+              "4:3",
+              "4:4",
+              "4:5",
+              "4:6",
+              "4:7",
+              "4:8"
+            ],
+            "only_out_of_combat": true,
+            "bag_key": "b",
+            "close_key": "esc",
+            "step_timeout": 9.0,
+            "hover_delay": 0.4,
+            "step_delay": 1.0,
+            "bag_title": {
+              "name": "bag_title.png",
+              "threshold": 0.8,
+              "area": null
+            },
+            "shop_title": {
+              "name": "shop_title.png",
+              "threshold": 0.7,
+              "area": null
+            },
+            "park_tolerance": 40,
+            "park_offset": 430,
+            "park_edge": 1090,
+            "shop_park": {
+              "x": 300,
+              "y": 300
+            },
+            "bag_park": {
+              "x": 1050,
+              "y": 300
+            },
+            "confirm": {
+              "name": "repair_confirm.png",
+              "threshold": 0.7,
+              "area": null
+            },
+            "amount_title": {
+              "name": "amount_title.png",
+              "threshold": 0.8,
+              "area": null
+            },
+            "shop_offset": {
+              "x": 22,
+              "y": 424
+            },
+            "shop_icon_search": null,
+            "cell_first": {
+              "x": -122,
+              "y": 285
+            },
+            "cell_step": {
+              "x": 33,
+              "y": 34
+            },
+            "cell_size": 26,
+            "empty_cell": {
+              "name": "bag_empty_cell.png",
+              "threshold": 0.7,
+              "area": null
+            },
+            "sell_panel": {
+              "name": "sell_panel.png",
+              "threshold": 0.8,
+              "area": null
+            },
+            "panel_near_shop": 260,
+            "lot_first": {
+              "x": -16,
+              "y": 23
+            },
+            "lot_step": {
+              "x": 33,
+              "y": 32
+            },
+            "lot_columns": 4,
+            "sell_button": {
+              "x": 71,
+              "y": 142
+            },
+            "amount_max": {
+              "x": 9,
+              "y": 52
+            },
+            "amount_ok": {
+              "x": 110,
+              "y": 52
+            }
+          }
+        },
+        {
+          "type": "dialog_guard",
+          "enabled": true,
+          "config": {
+            "templates": [
+              {
+                "name": "repair_confirm.png",
+                "threshold": 0.7,
+                "area": {
+                  "x": 340,
+                  "y": 200,
+                  "w": 600,
+                  "h": 320
+                }
+              },
+              {
+                "name": "drop_coins_title.png",
+                "threshold": 0.8,
+                "area": {
+                  "x": 340,
+                  "y": 340,
+                  "w": 600,
+                  "h": 260
+                }
+              }
+            ],
+            "markers": [],
+            "windows": [
+              {
+                "name": "shop_title.png",
+                "threshold": 0.7,
+                "area": null
+              },
+              {
+                "name": "bag_title.png",
+                "threshold": 0.8,
+                "area": null
+              }
+            ],
+            "window_check_every": 5.0,
+            "bag_key": "b",
+            "close_key": "esc",
+            "confirm_frames": 3,
+            "cooldown": 3.0,
+            "check_every": 0.5,
+            "snapshot_dir": "logs/shots",
+            "snapshot_every": 600.0
+          }
+        },
+        {
+          "type": "periodic_keys",
+          "enabled": true,
+          "config": {
+            "keys": {
+              "1": 1.5
+            },
+            "press_on_start": true
+          }
+        }
+      ]
     }
   },
   "windows": [
@@ -404,7 +1150,7 @@
   ],
   "characters": {
     "CEKXU": {
-      "profile": "Дру на волках 22-25",
+      "profile": "Дру на волках 22-25 (1280x720)",
       "label": "",
       "aliases": [],
       "enabled": true,
