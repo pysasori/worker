@@ -5,10 +5,13 @@
 зону цифр, а голий PositionConfig() — ні, і показував порожні читання там,
 де насправді все працює).
 
-Запуск (з теки backend, персонаж на екрані, живий):
-    .venv\\Scripts\\python diag_position_watch.py <нік> [секунд] [hwnd]
+Нік можна не вказувати — скрипт сам прочитає його з екрана так само, як бот.
 
-Приклад:
+Запуск (з теки backend, персонаж на екрані, живий):
+    .venv\\Scripts\\python diag_position_watch.py [нік] [секунд] [hwnd]
+
+Приклади:
+    .venv\\Scripts\\python diag_position_watch.py
     .venv\\Scripts\\python diag_position_watch.py BroWorker 15
 """
 from __future__ import annotations
@@ -25,6 +28,19 @@ from app.pipelines.base import Frame, PipelineContext
 from app.pipelines.position import PositionConfig, PositionPipeline
 from app.pipelines.registry import get_pipeline_class
 from app.vision.digits import read_numbers
+from app.vision.nick import NickConfig, read_nick
+
+
+def detect_nick(hwnd: int) -> str:
+    """Той самий спосіб, що й сканер бота: читаємо нік прямо з екрана."""
+    image = Win32WindowCapture(hwnd).grab()
+    nick = read_nick(image, NickConfig())
+    if not nick:
+        print("!! нік із екрана не прочитався (завантаження? нема HUD?) — "
+              "вкажи його першим аргументом вручну")
+        raise SystemExit(1)
+    print(f"нік із екрана: {nick!r}")
+    return nick
 
 
 def load_position_config(nick: str) -> PositionConfig:
@@ -46,14 +62,11 @@ def load_position_config(nick: str) -> PositionConfig:
 
 
 def main() -> int:
-    if len(sys.argv) < 2:
-        print("використання: diag_position_watch.py <нік> [секунд] [hwnd]")
-        return 1
-    nick = sys.argv[1]
-    seconds = float(sys.argv[2]) if len(sys.argv) > 2 else 15.0
-    hwnd = int(sys.argv[3]) if len(sys.argv) > 3 else None
-
-    cfg = load_position_config(nick)
+    args = sys.argv[1:]
+    nick = args[0] if args and not args[0].isdigit() else None
+    rest = args[1:] if nick else args
+    seconds = float(rest[0]) if rest else 15.0
+    hwnd = int(rest[1]) if len(rest) > 1 else None
 
     if hwnd is None:
         found = find_windows(WindowMatch())
@@ -61,6 +74,10 @@ def main() -> int:
             print("!! жодного вікна гри не знайдено")
             return 1
         hwnd = found[0]
+    if nick is None:
+        nick = detect_nick(hwnd)
+
+    cfg = load_position_config(nick)
     print(f"вікно: hwnd={hwnd}, стежу {seconds:.0f}с (читання раз на {cfg.read_every}с, як у боті)")
 
     cap = Win32WindowCapture(hwnd)
