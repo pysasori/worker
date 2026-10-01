@@ -36,10 +36,14 @@ class SessionStatus:
     last_error: str = ""
     pipelines: dict[str, str] = field(default_factory=dict)
 
-    def line(self) -> str:
+    def body(self) -> str:
+        """Рядок статусу без імені вікна — для логера, який ім'я вже додає сам."""
         parts = " | ".join(f"{v}" for v in self.pipelines.values() if v)
         state = "працює" if self.connected else (self.last_error or "чекаю вікно")
-        return f"[{self.window}] {state}{' | ' + parts if parts else ''}"
+        return f"{state}{' | ' + parts if parts else ''}"
+
+    def line(self) -> str:
+        return f"[{self.window}] {self.body()}"
 
 
 class WindowSession:

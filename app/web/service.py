@@ -227,7 +227,7 @@ class BotService:
             if not self.is_running():
                 return
             for st in self.orchestrator.statuses():
-                window_logger(st.window).info(st.line())
+                window_logger(st.window).info(st.body())
 
     def _maybe_autostart(self) -> None:
         """Автостарт: один раз, після першого скану, якщо бота не зупинено рукою."""
