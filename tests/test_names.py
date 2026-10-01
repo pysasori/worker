@@ -138,3 +138,20 @@ def test_warns_when_the_list_does_not_match_the_place(real_frame, search_cfg, mo
         res = pipe.process(ctx_for(real_frame, i * 0.5, shared))
         warned += [e for e in res.events if "не зі списку «Бити тільки цих»" in e]
     assert len(warned) == 1, "попереджаємо один раз, а не щокадру"
+
+
+def test_point_name_default_ratio_tolerates_a_single_letter_ocr_slip():
+    """
+    Живий випадок: на одній машині «фарм» стабільно читалось як «форм» (а↔о,
+    інше згладжування шрифту) — збіг 0.75. Старий поріг 0.6 давав запас, але
+    замалий; якщо OCR читає ще трохи гірше, точка перестає знаходитись.
+    Дефолт у ReturnHomeConfig.min_ratio має пропускати саме такий збіг.
+    """
+    from app.pipelines.return_home import ReturnHomeConfig
+
+    default_ratio = ReturnHomeConfig().min_ratio
+    hit = best_match("форм", ["фарм"], default_ratio)
+    assert hit is not None, f"поріг {default_ratio} має пропускати «форм» проти «фарм»"
+
+    # і не плутає з сусідніми пунктами того самого списку
+    assert best_match("форм", ["Город Драконов", "Копи", "Шелковый путь"], default_ratio) is None

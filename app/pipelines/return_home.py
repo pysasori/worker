@@ -121,8 +121,12 @@ class ReturnHomeConfig(PipelineConfig):
                          json_schema_extra={"tech": True})
     text_threshold: int = Field(default=140, ge=0, le=255, title="Поріг яскравості тексту",
                                 json_schema_extra={"tech": True})
-    min_ratio: float = Field(default=0.6, gt=0, le=1, title="Схожість назви точки",
-                             json_schema_extra={"tech": True})
+    min_ratio: float = Field(default=0.5, gt=0, le=1, title="Схожість назви точки",
+                             json_schema_extra={"tech": True},
+                             description="на одній машині «фарм» стабільно читалось як «форм» "
+                                         "(а↔о, згладжування шрифту інше) зі збігом 0.75 — на межі "
+                                         "старого порога 0.6. Назви зон у списку зовсім інші "
+                                         "(«Копи», «Город Драконов»), тож навіть 0.5 не плутає")
     autopath: AutopathConfig = Field(default_factory=AutopathConfig, title="Вікно «Автопуть»",
                                      json_schema_extra={"tech": True})
     ocr: OcrConfig = Field(default_factory=lambda: OcrConfig(scale=4), title="Читання списку",
