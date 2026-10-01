@@ -14,13 +14,20 @@ PW136AutoBot — єдина точка входу.
 Процес-«батько» лише стежить: якщо сервер упав, піднімає його знову (з паузою, щоб не крутитись
 на помилці). Усередині сервера працює наглядач за сесіями: зависла — перезапустить.
 
+При кожному запуску сам підтягує код з git (fast-forward, лише якщо нема локальних
+правок) — не треба щоразу вручну `git pull` на кожній машині. Не завадить роботі,
+якщо git недоступний, нема мережі чи є незакомічені зміни — просто пропустить крок
+і піде далі з тим кодом, що є.
+
 Параметри потрібні рідко: --port/--host (перекривають налаштування зі сторінки),
 --config (інший файл налаштувань), --log-level DEBUG (кожна дія в лозі),
---no-supervise (без батьківського процесу — для налагодження).
+--no-supervise (без батьківського процесу — для налагодження),
+--no-update (не підтягувати git при старті).
 """
 from __future__ import annotations
 
 import argparse
+import shutil
 import subprocess
 import sys
 import time
@@ -44,8 +51,44 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--log-level", default=None, help="DEBUG показує кожну дію")
     ap.add_argument("--no-browser", action="store_true", help="не відкривати сторінку")
     ap.add_argument("--no-supervise", action="store_true", help="без батьківського процесу")
+    ap.add_argument("--no-update", action="store_true", help="не підтягувати git при старті")
     ap.add_argument("--serve", action="store_true", help=argparse.SUPPRESS)   # внутрішній: сам сервер
     return ap
+
+
+def auto_update() -> None:
+    """
+    `git pull --ff-only` перед стартом — лише перемотування вперед, без мерджів і без
+    ризику зачепити незакомічені правки. Якщо щось не так (нема git, нема мережі, нема
+    репозиторію, локальні зміни, розбіжна історія) — тихо пропускаємо крок: бот має
+    стартувати з тим кодом, що є, а не падати через недоступний GitHub.
+    """
+    git = shutil.which("git")
+    if git is None:
+        return
+    try:
+        if subprocess.run([git, "rev-parse", "--is-inside-work-tree"], cwd=str(ROOT),
+                          capture_output=True, timeout=10).returncode != 0:
+            return
+        dirty = subprocess.run([git, "status", "--porcelain"], cwd=str(ROOT),
+                               capture_output=True, text=True, timeout=10)
+        if dirty.stdout.strip():
+            print("git: є незакомічені зміни — пропускаю автооновлення", flush=True)
+            return
+        before = subprocess.run([git, "rev-parse", "HEAD"], cwd=str(ROOT),
+                                capture_output=True, text=True, timeout=10).stdout.strip()
+        pull = subprocess.run([git, "pull", "--ff-only"], cwd=str(ROOT),
+                              capture_output=True, text=True, timeout=30)
+        if pull.returncode != 0:
+            print(f"git: оновлення пропущено ({pull.stderr.strip().splitlines()[-1:] or pull.stdout.strip()})",
+                  flush=True)
+            return
+        after = subprocess.run([git, "rev-parse", "HEAD"], cwd=str(ROOT),
+                               capture_output=True, text=True, timeout=10).stdout.strip()
+        if before != after:
+            print(f"git: оновлено {before[:7]} -> {after[:7]}", flush=True)
+    except (OSError, subprocess.SubprocessError):
+        pass  # мережа, права доступу тощо — не критично, працюємо з тим, що є
 
 
 def _settings(args: argparse.Namespace):
@@ -126,6 +169,10 @@ def main() -> int:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     args = build_parser().parse_args()
     setup_logging(args.log_level)
+    # лише на вході людини в main.py, не на кожному внутрішньому перезапуску
+    # дитини наглядачем (інакше падіння сервера кожні кілька секунд дьоргало б git)
+    if not args.serve and not args.no_update:
+        auto_update()
     try:
         if args.serve or args.no_supervise:
             return serve(args)

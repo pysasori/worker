@@ -77,3 +77,88 @@ def test_only_one_entry_point_remains():
     """Ніяких підкоманд: усе керується зі сторінки."""
     with pytest.raises(SystemExit):
         entry.build_parser().parse_args(["web"])
+
+
+class FakeRun:
+    """Підробка subprocess.run: маршрутизує за командою git."""
+
+    def __init__(self, responses: dict[tuple, object]) -> None:
+        self.responses = responses
+        self.calls: list[list[str]] = []
+
+    def __call__(self, cmd, **kw):
+        self.calls.append(cmd)
+        key = tuple(cmd[1:])  # без шляху до git.exe
+        for pattern, result in self.responses.items():
+            if cmd[1:len(pattern) + 1] == list(pattern):
+                return result
+        raise AssertionError(f"непередбачена команда: {cmd}")
+
+
+class Result:
+    def __init__(self, returncode=0, stdout="", stderr=""):
+        self.returncode, self.stdout, self.stderr = returncode, stdout, stderr
+
+
+def test_auto_update_skips_with_uncommitted_changes(monkeypatch, capsys):
+    monkeypatch.setattr(entry.shutil, "which", lambda name: "git")
+    fake = FakeRun({
+        ("rev-parse", "--is-inside-work-tree"): Result(0),
+        ("status", "--porcelain"): Result(0, stdout="M config/windows.json\n"),
+    })
+    monkeypatch.setattr(entry.subprocess, "run", fake)
+    entry.auto_update()
+    assert not any(c[1:3] == ["pull", "--ff-only"] for c in fake.calls), "брудний репо — pull не викликаємо"
+    assert "незакомічені" in capsys.readouterr().out
+
+
+def test_auto_update_pulls_a_clean_repo(monkeypatch, capsys):
+    monkeypatch.setattr(entry.shutil, "which", lambda name: "git")
+    fake = FakeRun({
+        ("rev-parse", "--is-inside-work-tree"): Result(0),
+        ("status", "--porcelain"): Result(0, stdout=""),
+        ("rev-parse", "HEAD"): Result(0, stdout="aaa1111\n"),
+        ("pull", "--ff-only"): Result(0, stdout="Updating aaa1111..bbb2222\n"),
+    })
+    # друге rev-parse HEAD (після pull) має віддати інший хеш — підміняємо послідовно
+    calls = {"n": 0}
+    heads = ["aaa1111\n", "bbb2222\n"]
+
+    def run(cmd, **kw):
+        fake.calls.append(cmd)
+        if cmd[1:3] == ["rev-parse", "HEAD"]:
+            out = heads[calls["n"]]
+            calls["n"] += 1
+            return Result(0, stdout=out)
+        for pattern, result in fake.responses.items():
+            if cmd[1:len(pattern) + 1] == list(pattern):
+                return result
+        raise AssertionError(f"непередбачена команда: {cmd}")
+
+    monkeypatch.setattr(entry.subprocess, "run", run)
+    entry.auto_update()
+    assert any(c[1:3] == ["pull", "--ff-only"] for c in fake.calls)
+    assert "aaa1111 -> bbb2222" in capsys.readouterr().out
+
+
+def test_auto_update_is_quiet_without_git(monkeypatch):
+    monkeypatch.setattr(entry.shutil, "which", lambda name: None)
+    entry.auto_update()  # не падає, якщо git узагалі нема
+
+
+def test_auto_update_does_not_crash_on_pull_failure(monkeypatch, capsys):
+    monkeypatch.setattr(entry.shutil, "which", lambda name: "git")
+    fake = FakeRun({
+        ("rev-parse", "--is-inside-work-tree"): Result(0),
+        ("status", "--porcelain"): Result(0, stdout=""),
+        ("rev-parse", "HEAD"): Result(0, stdout="aaa1111\n"),
+        ("pull", "--ff-only"): Result(1, stdout="", stderr="fatal: couldn't find remote ref main\n"),
+    })
+    monkeypatch.setattr(entry.subprocess, "run", fake)
+    entry.auto_update()
+    assert "пропущено" in capsys.readouterr().out
+
+
+def test_no_update_flag_is_available():
+    args = entry.build_parser().parse_args(["--no-update"])
+    assert args.no_update is True
