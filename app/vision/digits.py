@@ -58,12 +58,35 @@ def read_numbers(image: Image.Image, cfg: DigitsConfig, ocr: OcrConfig) -> list[
         return []
     box = (max(0, box[0] - cfg.pad), max(0, box[1] - cfg.pad),
            min(crop.width, box[2] + cfg.pad), min(crop.height, box[3] + cfg.pad))
-    piece = ImageOps.invert(mask.crop(box))
-    piece = piece.resize((piece.width * cfg.scale, piece.height * cfg.scale), Image.LANCZOS)
-    # мову лишаємо ту саму (в проєкті є лише rus.traineddata), міняємо тільки режим:
-    # один рядок і без повторного збільшення — картинку вже збільшили вище
-    # лише цифри й кома, мова eng: rus читав «588» як «5868» (зайва вісімка між цифр)
-    text = read_line(piece, ocr.model_copy(update={
-        "psm": 7, "scale": 1, "lang": "eng",
-        "extra": "-c tessedit_char_whitelist=0123456789,"}))
-    return [int(n) for n in _NUM.findall(text)]
+    base = ImageOps.invert(mask.crop(box))
+    # Tesseract на такому дрібному тексті хитається («586» -> «566», кома губиться або
+    # зливає числа в «244586»). Тому читаємо кількома способами й беремо збіг двох.
+    votes: dict[tuple[int, ...], int] = {}
+    first: tuple[int, ...] | None = None
+    for lang, scale, whitelist in _VARIANTS:
+        piece = base.resize((base.width * scale, base.height * scale), Image.LANCZOS)
+        extra = "-c tessedit_char_whitelist=0123456789," if whitelist else ""
+        text = read_line(piece, ocr.model_copy(update={"psm": 7, "scale": 1, "lang": lang, "extra": extra}))
+        pair = _numbers(text, split=cfg.color == "white")
+        if pair is None:
+            continue
+        first = first or pair
+        votes[pair] = votes.get(pair, 0) + 1
+        if votes[pair] >= 2:
+            return list(pair)
+    if not votes:
+        return []
+    best = max(votes, key=lambda k: (votes[k], k == first))
+    return list(best)
+
+
+# (мова, збільшення, лише цифри) — від найточнішого до запасних
+_VARIANTS = (("eng", 8, False), ("eng", 8, True), ("rus", 4, False), ("eng", 6, False), ("eng", 4, True))
+
+
+def _numbers(text: str, split: bool) -> tuple[int, ...] | None:
+    """Числа з рядка. Для координат без коми число зливається («244586») — ділимо навпіл."""
+    nums = _NUM.findall(text)
+    if split and len(nums) == 1 and len(nums[0]) == 6:
+        return int(nums[0][:3]), int(nums[0][3:])
+    return tuple(int(n) for n in nums) or None
