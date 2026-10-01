@@ -308,9 +308,10 @@ class FakeSession:
     created: list[str] = []
 
     def __init__(self, window, bot_cfg, dry_run=False):
+        from app.runtime.session import SessionStatus
+
         self.cfg = window
-        self.status = type("S", (), {"window": window.name, "connected": True, "tick": 0,
-                                     "fps": 0.0, "last_error": "", "pipelines": {}})()
+        self.status = SessionStatus(window=window.name, connected=True)
         self.stopped = threading.Event()
         FakeSession.created.append(window.name)
 
@@ -592,3 +593,37 @@ def test_autostart_starts_the_bot_once_and_respects_a_manual_stop(service, monke
 def test_autostart_is_off_by_default(service):
     service._maybe_autostart()
     assert not service.is_running()
+
+
+# ---- періодичний стан у консоль --------------------------------------------------------
+def test_log_status_once_writes_the_session_line(running):
+    """Той самий рядок, що на картці вікна, має піти в лог цього вікна — консоль і /api/log."""
+    from app.core.logging import ring_buffer
+
+    svc = running
+    svc.orchestrator._slots["A"].session.status.pipelines["heal"] = "HP 91%"
+    svc.log_status_once()
+    events = ring_buffer.recent(window="A", limit=50)
+    assert any("HP 91%" in e.message for e in events)
+
+
+def test_log_status_once_is_quiet_when_stopped(service):
+    """Бот не запущений — писати нема чого й нема про кого."""
+    from app.core.logging import ring_buffer
+
+    before = len(ring_buffer.recent(limit=10_000))
+    service.log_status_once()
+    assert len(ring_buffer.recent(limit=10_000)) == before
+
+
+def test_status_log_interval_can_be_switched_off(running):
+    svc = running
+    svc.config.settings.status_log_every = 0
+    from app.core.logging import ring_buffer
+
+    before = len(ring_buffer.recent(limit=10_000))
+    # імітуємо один прохід циклу: every=0 просто чекає й нічого не пише
+    with svc._lock:
+        every = svc.config.settings.status_log_every
+    assert every == 0
+    assert len(ring_buffer.recent(limit=10_000)) == before

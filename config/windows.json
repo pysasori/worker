@@ -1975,7 +1975,8 @@
         "tesseract_cmd": "C:\\Program Files\\Tesseract-OCR\\tesseract.exe",
         "tessdata_dir": "F:\\PythonProjects\\Games\\PW\\PW136AutoBot\\models\\tessdata"
       }
-    }
+    },
+    "status_log_every": 20.0
   },
   "migrated_windows": true
 }

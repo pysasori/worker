@@ -67,6 +67,11 @@ class AppSettings(BaseModel):
                       json_schema_extra={"tech": True})
     nick: NickConfig = Field(default_factory=NickConfig, title="Читання ніка з екрана",
                              json_schema_extra={"tech": True})
+    status_log_every: float = Field(default=20.0, ge=0, title="Писати стан у консоль раз на, с",
+                                    description="0 = не писати. Той самий рядок, що й у картці вікна "
+                                                "в інтерфейсі (HP, координати, ціль, кожен пайплайн) — "
+                                                "щоб бачити прогрес прямо в консолі чи в логах "
+                                                "віддаленої машини, не відкриваючи сторінку")
 
 
 class CharacterConfig(BaseModel):

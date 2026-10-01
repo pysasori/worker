@@ -52,6 +52,7 @@ class BotService:
         self._scan_stop = threading.Event()
         self._scan_thread: threading.Thread | None = None
         self._guard_thread: threading.Thread | None = None
+        self._status_thread: threading.Thread | None = None
         self._ticks: dict[str, tuple[int, float]] = {}      # останній тік сесії й коли він змінився
         self._autostarted = False
 
@@ -64,6 +65,7 @@ class BotService:
         self._scan_thread = threading.Thread(target=self._scan_loop, name="scanner", daemon=True)
         self._scan_thread.start()
         self.start_guard()
+        self.start_status_log()
 
     def stop_scanner(self) -> None:
         self._scan_stop.set()
@@ -193,6 +195,39 @@ class BotService:
                     if orch.restart(st.window):
                         restarted.append(st.window)
         return restarted
+
+    # ---- періодичний стан у консоль ---------------------------------------------
+    def start_status_log(self) -> None:
+        """
+        Той самий рядок, що на картці вікна, раз на status_log_every секунд —
+        щоб бачити прогрес у консолі (зокрема на віддаленій машині, звідки зручніше
+        скинути шматок логу, ніж скрін браузера) без постійних заходів на сторінку.
+        """
+        if self._status_thread and self._status_thread.is_alive():
+            return
+        self._status_thread = threading.Thread(target=self._status_loop, name="status-log", daemon=True)
+        self._status_thread.start()
+
+    def _status_loop(self) -> None:
+        while not self._scan_stop.is_set():
+            with self._lock:
+                every = self.config.settings.status_log_every
+            if not every:
+                self._scan_stop.wait(5.0)      # вимкнено — просто чекаємо, раптом увімкнуть
+                continue
+            self._scan_stop.wait(every)
+            try:
+                self.log_status_once()
+            except Exception:
+                self.log.exception("стан у консоль: збій, пробую далі")
+
+    def log_status_once(self) -> None:
+        """Один прохід: для кожної працюючої сесії — її рядок статусу в лог цього вікна."""
+        with self._lock:
+            if not self.is_running():
+                return
+            for st in self.orchestrator.statuses():
+                window_logger(st.window).info(st.line())
 
     def _maybe_autostart(self) -> None:
         """Автостарт: один раз, після першого скану, якщо бота не зупинено рукою."""
