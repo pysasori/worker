@@ -55,8 +55,12 @@ def _engine(cmd: str, tessdata: str):
     if not Path(cmd).exists():
         return None
     pytesseract.pytesseract.tesseract_cmd = cmd
-    if Path(tessdata).is_dir():
-        os.environ["TESSDATA_PREFIX"] = str(Path(tessdata).resolve())
+    # шлях із профілю міг бути написаний на іншому ПК (F:\...) — тоді беремо теку проєкту,
+    # інакше системний tesseract без rus.traineddata мовчки читає порожнечу
+    for candidate in (Path(tessdata), ROOT / "models" / "tessdata"):
+        if candidate.is_dir():
+            os.environ["TESSDATA_PREFIX"] = str(candidate.resolve())
+            break
     return pytesseract
 
 
