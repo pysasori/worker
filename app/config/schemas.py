@@ -34,7 +34,7 @@ class WindowConfig(BaseModel):
     profile: str = Field(description="який профіль інтерфейсу використати")
     match: WindowMatch = Field(default_factory=WindowMatch)
     enabled: bool = True
-    poll_interval: float = Field(default=0.12, gt=0, description="пауза між кадрами, с")
+    poll_interval: float = Field(default=0.5, gt=0, description="пауза між кадрами, с")
     overrides: dict[str, dict[str, Any]] = Field(
         default_factory=dict, description="точкові правки конфіга пайплайна: {тип: {поле: значення}}")
 
@@ -88,7 +88,7 @@ class CharacterConfig(BaseModel):
         description="те, що OCR звично читає замість справжнього ніка: людина підтвердила, "
                     "що це той самий персонаж")
     enabled: bool = Field(default=False, description="чи запускати бота для цього персонажа")
-    poll_interval: float = Field(default=0.06, gt=0, description="пауза між кадрами, с")
+    poll_interval: float = Field(default=0.5, gt=0, description="пауза між кадрами, с")
     overrides: dict[str, dict[str, Any]] = Field(
         default_factory=dict, description="точкові правки конфіга пайплайна: {тип: {поле: значення}}")
 

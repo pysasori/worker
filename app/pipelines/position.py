@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from pydantic import Field
 
+from app.core.background import Probe
 from app.pipelines.actions import PipelineResult
 from app.pipelines.base import Pipeline, PipelineConfig, PipelineContext
 from app.pipelines.registry import register
@@ -72,6 +73,7 @@ class PositionPipeline(Pipeline):
 
     def reset(self) -> None:
         cfg: PositionConfig = self.config
+        self.probe = Probe()
         self.pos = Position()
         self.last_read = float("-inf")
         self.misses = 0
@@ -81,12 +83,16 @@ class PositionPipeline(Pipeline):
         self.home = (Position(x=cfg.home_x, y=cfg.home_y, known=True)
                      if cfg.home_x and cfg.home_y else None)
         self.away = False              # щоб не писати в лог те саме щосекунди
+        self.probe = Probe()           # OCR цифр іде у фоні
 
     def process(self, ctx: PipelineContext) -> PipelineResult:
         cfg: PositionConfig = self.config
-        if ctx.now - self.last_read >= cfg.read_every:
+        due = ctx.now - self.last_read >= cfg.read_every
+        if due:
             self.last_read = ctx.now
-            self._read(ctx)
+        ready, numbers = self.probe.step(read_numbers, ctx.frame.image, cfg.digits, cfg.ocr, due=due)
+        if ready:
+            self._apply(numbers, ctx)
         ctx.shared[SHARED_POS] = self.pos
         ctx.shared[SHARED_HOME] = self.home
         return self._report()
@@ -109,9 +115,8 @@ class PositionPipeline(Pipeline):
             return PipelineResult(status=status, events=["повернувся на місце"])
         return PipelineResult.idle(status)
 
-    def _read(self, ctx: PipelineContext) -> None:
+    def _apply(self, numbers: list[int], ctx: PipelineContext) -> None:
         cfg: PositionConfig = self.config
-        numbers = read_numbers(ctx.frame.image, cfg.digits, cfg.ocr)
         if len(numbers) < 2:
             self.misses += 1
             if self.misses >= cfg.forget_after:

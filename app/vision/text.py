@@ -39,6 +39,7 @@ class OcrConfig(BaseModel):
     lang: str = Field(json_schema_extra={"tech": True}, default="rus", title="Мова")
     psm: int = Field(json_schema_extra={"tech": True}, default=7, title="Режим рядка", description="7 = один рядок тексту")
     scale: int = Field(json_schema_extra={"tech": True}, default=4, ge=1, le=8, title="Збільшення перед читанням")
+    extra: str = Field(json_schema_extra={"tech": True}, default="", title="Додаткові ключі tesseract")
     tesseract_cmd: str = Field(json_schema_extra={"tech": True}, default=r"C:\Program Files\Tesseract-OCR\tesseract.exe",
                                title="Шлях до tesseract.exe")
     tessdata_dir: str = Field(json_schema_extra={"tech": True}, default=str(ROOT / "models" / "tessdata"),
@@ -99,7 +100,7 @@ def read_line(crop: Image.Image, cfg: OcrConfig) -> str:
     if engine is None:
         return ""
     try:
-        text = engine.image_to_string(image, lang=cfg.lang, config=f"--psm {cfg.psm}")
+        text = engine.image_to_string(image, lang=cfg.lang, config=f"--psm {cfg.psm} {cfg.extra}".strip())
     except Exception:
         return ""
     return " ".join(text.split())

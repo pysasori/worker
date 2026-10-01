@@ -169,7 +169,24 @@ def create_app(config_path: Path | None = None, scan: bool = True) -> FastAPI:
     return app
 
 
+def _keep_awake() -> None:
+    """
+    Бот шле клавіші через PostMessage, тож Windows не бачить «активності користувача»
+    і через таймер простою (30 хв) присипляє комп. Поки процес живий — просимо не спати
+    (екран може гаснути, система — ні). Знімається само, коли процес завершується.
+    """
+    try:
+        import ctypes
+        ES_CONTINUOUS, ES_SYSTEM_REQUIRED = 0x80000000, 0x00000001
+        ctypes.windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED)
+    except Exception:
+        pass
+
+
 def run(host: str = "127.0.0.1", port: int = 8765, config_path: Path | None = None) -> None:
     import uvicorn
 
+    from app.core.background import enable
+    enable()      # важкий аналіз кадру — у фоні, щоб тік не гальмував
+    _keep_awake()
     uvicorn.run(create_app(config_path), host=host, port=port, log_level="warning")

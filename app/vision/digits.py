@@ -62,5 +62,8 @@ def read_numbers(image: Image.Image, cfg: DigitsConfig, ocr: OcrConfig) -> list[
     piece = piece.resize((piece.width * cfg.scale, piece.height * cfg.scale), Image.LANCZOS)
     # мову лишаємо ту саму (в проєкті є лише rus.traineddata), міняємо тільки режим:
     # один рядок і без повторного збільшення — картинку вже збільшили вище
-    text = read_line(piece, ocr.model_copy(update={"psm": 7, "scale": 1}))
+    # лише цифри й кома, мова eng: rus читав «588» як «5868» (зайва вісімка між цифр)
+    text = read_line(piece, ocr.model_copy(update={
+        "psm": 7, "scale": 1, "lang": "eng",
+        "extra": "-c tessedit_char_whitelist=0123456789,"}))
     return [int(n) for n in _NUM.findall(text)]

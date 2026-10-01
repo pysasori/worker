@@ -22,6 +22,7 @@ from app.pipelines.base import Pipeline, PipelineConfig, PipelineContext
 from app.pipelines.registry import register
 from app.pipelines.shared import busy_reasons
 from app.core.geometry import Region
+from app.core.background import Probe
 from app.vision.template import TemplateSpec, find_template
 from app.vision.ui import UiMarker, marker_present
 
@@ -86,6 +87,7 @@ class DialogGuardPipeline(Pipeline):
         self.reset()
 
     def reset(self) -> None:
+        self.probe, self.win_probe = Probe(), Probe()
         self.seen = 0
         self.last_close = float("-inf")
         self.last_check = float("-inf")
@@ -99,15 +101,16 @@ class DialogGuardPipeline(Pipeline):
             self.seen = 0
             return PipelineResult.idle()
 
-        if ctx.now - self.last_check < cfg.check_every:
-            return PipelineResult.idle("бачу діалог" if self.seen else "")
-        self.last_check = ctx.now
-
+        due = ctx.now - self.last_check >= cfg.check_every
+        if due:
+            self.last_check = ctx.now
         image = ctx.frame.image
         stray = self._stray_window(ctx, image)
         if stray is not None:
             return stray
-        hit = next(("колір" for m in cfg.markers if marker_present(image, m)), None)             or next((t.name for t in cfg.templates if find_template(image, t) is not None), None)
+        ready, hit = self.probe.step(self._look, image, due=due)
+        if not ready:
+            return PipelineResult.idle("бачу діалог" if self.seen else "")
         if hit is None:
             self.seen = 0
             return PipelineResult.idle()
@@ -123,6 +126,11 @@ class DialogGuardPipeline(Pipeline):
             status="закриваю діалог",
             events=[f"на екрані висів діалог ({hit}) — закрив"
                     + (f", знімок {shot}" if shot else "")])
+
+    def _look(self, image):
+        cfg: DialogGuardConfig = self.config
+        return (next(("колір" for m in cfg.markers if marker_present(image, m)), None)
+                or next((t.name for t in cfg.templates if find_template(image, t) is not None), None))
 
     def _snapshot(self, ctx: PipelineContext, why: str) -> str | None:
         """Кадр на диск: інакше по логу не сказати, що саме бот побачив."""
@@ -151,10 +159,15 @@ class DialogGuardPipeline(Pipeline):
         Коли вікна відкрив хтось із пайплайнів, ми мовчимо: busy_reasons не порожній.
         """
         cfg: DialogGuardConfig = self.config
-        if not cfg.windows or ctx.now - self.last_window_check < cfg.window_check_every:
+        if not cfg.windows:
             return None
-        self.last_window_check = ctx.now
-        open_now = [t for t in cfg.windows if find_template(image, t) is not None]
+        due = ctx.now - self.last_window_check >= cfg.window_check_every
+        if due:
+            self.last_window_check = ctx.now
+        ready, open_now = self.win_probe.step(
+            lambda: [t for t in cfg.windows if find_template(image, t) is not None], due=due)
+        if not ready:
+            return None
         if not open_now:
             self.window_seen = 0
             return None

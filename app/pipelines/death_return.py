@@ -33,6 +33,7 @@ from app.pipelines.shared import (
     SHARED_HOME, Position, read_altitude, read_player, read_position, set_busy, set_mounted,
 )
 from app.vision.autopath import AutopathConfig, handle_x_for, read_autopath
+from app.core.background import Probe
 from app.vision.template import TemplateSpec, find_template
 
 BUSY = "death_return"
@@ -142,6 +143,7 @@ class DeathReturnPipeline(Pipeline):
         self.moved_at = 0.0
         self.flying = False
         self.deaths = 0
+        self.probe = Probe()
         self.last_check = float("-inf")
         self.hp_zero_since: float | None = None
         self.last_shot = float("-inf")
@@ -217,9 +219,10 @@ class DeathReturnPipeline(Pipeline):
             DeathState.VERIFY: self._verify,
         }[self.state]
         if self.state is DeathState.IDLE:
-            if ctx.now - self.last_check < cfg.check_every:
+            if ctx.now - self.last_check < cfg.check_every and not self.probe.pending:
                 return PipelineResult.idle("схоже, персонаж загинув" if self.seen else "")
-            self.last_check = ctx.now
+            if not self.probe.pending:
+                self.last_check = ctx.now
         elif self.state is not DeathState.RESPAWN and ctx.now - self.last_check >= cfg.check_every:
             self.last_check = ctx.now
             if self._dead(frame):   # у дорозі знову загинув
@@ -229,7 +232,10 @@ class DeathReturnPipeline(Pipeline):
 
     def _idle(self, ctx: PipelineContext) -> PipelineResult:
         cfg: DeathReturnConfig = self.config
-        if not self._dead(ctx.frame.image):
+        ready, dead = self.probe.step(self._dead, ctx.frame.image)
+        if not ready:
+            return PipelineResult.idle("схоже, персонаж загинув" if self.seen else "")
+        if not dead:
             # Скидаємо безумовно: після перепідключення/reset лічильник `seen`
             # вже нульовий, але старий busy міг лишитися у спільному стані.
             set_busy(ctx.shared, BUSY, False)
