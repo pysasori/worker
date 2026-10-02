@@ -352,7 +352,7 @@ class BotService:
             if not self.found:
                 self.scan_once()                      # перший «Запустити» не чекає фонового скану
             cls = Orchestrator
-            if self.config.settings.processes:
+            if settings.PROCESSES:
                 from app.runtime.procs import ProcessOrchestrator
                 cls = ProcessOrchestrator
             self.orchestrator = cls(self.config, dry_run=dry_run, windows=self._desired())

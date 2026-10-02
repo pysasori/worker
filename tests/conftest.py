@@ -11,6 +11,10 @@ from PIL import Image
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from app.core.settings import settings  # noqa: E402
+
+settings.PROCESSES = False      # тести ганяють сесії потоками: швидко й з доступом до session
+
 FIXTURES = Path(__file__).parent / "fixtures"
 FRAME = FIXTURES / "frame_1440_target_and_pet.png"
 

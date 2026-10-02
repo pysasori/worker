@@ -23,6 +23,9 @@ class AppSettings(BaseSettings):
     CAPTURE_RETRIES: int = 3
     # Глобальний стоп-кран: нічого не тиснути, тільки дивитись
     DRY_RUN: bool = False
+    # Кожне вікно в окремому процесі: вікна не ділять одне ядро (GIL) і не гальмують
+    # одне одного. Вимикається лише в тестах і для налагодження (PROCESSES=false у .env)
+    PROCESSES: bool = True
 
 
 settings = AppSettings()

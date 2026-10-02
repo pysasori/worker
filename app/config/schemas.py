@@ -42,9 +42,6 @@ class WindowConfig(BaseModel):
 class AppSettings(BaseModel):
     """Налаштування самої програми: усе, що не належить ні профілю, ні персонажу."""
 
-    processes: bool = Field(default=False, title="Кожне вікно в окремому процесі",
-                            description="вікна не ділять одне ядро (GIL) і не гальмують одне одного; "
-                                        "потребує ~100-150 МБ пам'яті на вікно")
     autostart: bool = Field(default=False, title="Запускати бота при старті програми",
                             description="після запуску main.py бот сам стартує для персонажів із "
                                         "галочкою «запускати». Без цього — кнопкою «Запустити»")
