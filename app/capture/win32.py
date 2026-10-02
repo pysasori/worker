@@ -29,6 +29,11 @@ _PW_RENDERFULLCONTENT = 0x2
 _BLACK_MAX_LUM = 8
 
 
+def _not_black(image: Image.Image) -> bool:
+    """Кадр не порожній? Дивимось зменшену копію: повне перетворення 1280x720 коштувало ~100 мс на тік."""
+    return image.reduce(16).convert("L").getextrema()[1] > _BLACK_MAX_LUM
+
+
 class Win32WindowCapture(CapturePort):
     def __init__(self, hwnd: int, name: str = "window", retries: int | None = None) -> None:
         self.hwnd = hwnd
@@ -60,7 +65,7 @@ class Win32WindowCapture(CapturePort):
                 failure = exc
                 time.sleep(0.02)
                 continue
-            if last.convert("L").getextrema()[1] > _BLACK_MAX_LUM:
+            if _not_black(last):
                 return last
             time.sleep(0.03)
         if last is None:

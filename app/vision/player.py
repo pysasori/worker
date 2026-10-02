@@ -11,11 +11,12 @@
 """
 from __future__ import annotations
 
+import numpy as np
 from PIL import Image
 from pydantic import BaseModel, Field
 
 from app.core.geometry import Region
-from app.vision.colors import is_red
+from app.vision.colors import RED_MIN_DIFF
 from app.vision.schemas import BarReading
 
 
@@ -42,18 +43,14 @@ def read_player_hp(image: Image.Image, cfg: PlayerBarConfig | None = None) -> Ba
     # розірвати червоне на 20–30 px: старий пошук зупинявся всередині цифр і
     # читав повну смужку як 44%. Беремо крайні червоні пікселі по всій висоті;
     # напис між ними не змінює справжній правий край заповнення.
-    first, last = w, -1
-    row = 0
-    for y in range(h):
-        for x in range(w):
-            if is_red(px[x, y]):
-                if x < first:
-                    first = x
-                if x > last:
-                    row = y
-                    last = x
-    if last < first:
+    arr = np.asarray(crop.convert("RGB")).astype(np.int16)
+    r, g, bl = arr[..., 0], arr[..., 1], arr[..., 2]
+    red = (r > 150) & (g < 100) & (bl < 100) & (r - g >= RED_MIN_DIFF)
+    cols = np.flatnonzero(red.any(axis=0))
+    if cols.size == 0:
         return BarReading(present=False, total=cfg.width)
+    first, last = int(cols[0]), int(cols[-1])
+    row = int(np.flatnonzero(red[:, last])[-1])
     filled = min(last - first + 1, cfg.width)
     return BarReading(present=True, filled=filled, total=cfg.width,
                       x0=cfg.region.x + first, row=cfg.region.y + row)

@@ -22,7 +22,7 @@ class PetHealConfig(PipelineConfig):
     forget_after: int = Field(default=2, ge=1, title="Забути рамку після N невдач",
                               json_schema_extra={"tech": True},
                               description="щоб бот не тримався за старі координати")
-    relocate_every: float = Field(default=2.0, ge=0, title="Перешукувати рамку раз на, с",
+    relocate_every: float = Field(default=6.0, ge=0, title="Перешукувати рамку раз на, с",
                                   json_schema_extra={"tech": True},
                                   description="рамку можна пересунути мишею, тому іноді шукаємо наново")
 
