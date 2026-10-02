@@ -351,8 +351,11 @@ class BotService:
             self._run_filter = set(only) if only is not None else None
             if not self.found:
                 self.scan_once()                      # перший «Запустити» не чекає фонового скану
-            self.orchestrator = Orchestrator(self.config, dry_run=dry_run,
-                                             windows=self._desired())
+            cls = Orchestrator
+            if self.config.settings.processes:
+                from app.runtime.procs import ProcessOrchestrator
+                cls = ProcessOrchestrator
+            self.orchestrator = cls(self.config, dry_run=dry_run, windows=self._desired())
             self.orchestrator.start()
 
     def start_window(self, name: str, dry_run: bool = False) -> None:
