@@ -16,7 +16,7 @@ from PIL import Image, ImageDraw
 
 from app.capture.win32 import Win32WindowCapture
 from app.capture.window_finder import WindowMatch, find_windows, resolve_window
-from app.config.loader import load_config, save_config
+from app.config.loader import load_config, runtime_config_path, save_config
 from app.config.schemas import BotConfig, CharacterConfig, WindowConfig
 from app.core.exceptions import BotError, ConfigError, WindowNotFoundError
 from app.core.logging import ring_buffer, window_logger
@@ -35,7 +35,7 @@ class BotService:
 
     def __init__(self, config_path: Path | None = None) -> None:
         self.log = window_logger("web")
-        self.config_path = Path(config_path or settings.CONFIG_PATH)
+        self.config_path = Path(config_path) if config_path else runtime_config_path()
         self.config: BotConfig = load_config(self.config_path)
         self.orchestrator: Orchestrator | None = None
         self.dry_run = False

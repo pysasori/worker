@@ -15,3 +15,6 @@ screens/
 # Local backups and archives
 config/*.bak-*
 *.zip
+
+# Живий конфіг цієї машини (шаблон — config/windows.json)
+config/local.json

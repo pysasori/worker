@@ -168,3 +168,34 @@ def test_loot_overlay_leaves_the_frame_untouched_for_an_unknown_window(tmp_path)
     frame = Image.new("RGB", (40, 30), (1, 2, 3))
     out = svc._draw_loot_overlay("hwnd:12345", frame)
     assert list(out.getdata()) == list(frame.getdata())
+
+
+def test_removed_character_cannot_be_re_adopted_before_saving(client):
+    """
+    Живий випадок: «видалення вікон у вебі не працює». Прибраного персонажа сервер, де
+    видалення ще не збережене, далі віддавав у /api/state, і adoptNewCharacters()
+    щосекунди повертав його назад. Сторінка тепер пам'ятає прибраних до збереження.
+    """
+    script = client.get("/static/app.js").text
+    assert "S.removed" in script
+    assert "!S.removed.has(e.nick)" in script, "прибраних не підхоплюємо назад"
+    assert "S.removed.clear()" in script, "після збереження забуваємо"
+    assert "function removeCharacter" in script
+    assert "window-remove" in script, "× прямо на картці офлайн-вікна"
+
+
+def test_saving_without_a_character_removes_it_for_good(tmp_path):
+    import json
+
+    from app.web.service import BotService
+
+    raw = {"profiles": {"p": {"pipelines": []}}, "windows": [], "migrated_windows": True,
+           "characters": {"Gone": {"profile": "p"}, "Stay": {"profile": "p"}}}
+    path = tmp_path / "windows.json"
+    path.write_text(json.dumps(raw, ensure_ascii=False), encoding="utf-8")
+    svc = BotService(path)
+    cfg = svc.get_config()
+    del cfg["characters"]["Gone"]
+    svc.update_config(cfg)
+    assert [w["name"] for w in svc.state()["windows"]] == ["Stay"]
+    assert "Gone" not in json.loads(path.read_text(encoding="utf-8"))["characters"]

@@ -56,40 +56,60 @@ def build_parser() -> argparse.ArgumentParser:
     return ap
 
 
+def _git(git: str, *args: str, timeout: int = 10) -> subprocess.CompletedProcess:
+    return subprocess.run([git, *args], cwd=str(ROOT), capture_output=True, text=True, timeout=timeout)
+
+
+def _release_template(git: str) -> None:
+    """
+    config/windows.json у репозиторії — лише шаблон; живий конфіг цієї машини — це
+    config/local.json (див. app.config.loader.runtime_config_path). Старі версії писали
+    живі налаштування прямо в шаблон, і він лишався «брудним» та блокував оновлення.
+    Спершу гарантуємо, що налаштування збережені в local.json, і лише тоді повертаємо
+    шаблон до стану репозиторію — так нічого не губиться.
+    """
+    from app.config.loader import runtime_config_path
+
+    local = runtime_config_path()          # створить local.json із (можливо, брудного) шаблону
+    if not local.exists():
+        return
+    dirty = _git(git, "status", "--porcelain", "--untracked-files=no", "--", "config/windows.json")
+    if dirty.stdout.strip():
+        _git(git, "checkout", "--", "config/windows.json")
+        print("git: налаштування машини збережено в config/local.json, шаблон windows.json відновлено",
+              flush=True)
+
+
 def auto_update() -> None:
     """
     `git pull --ff-only` перед стартом — лише перемотування вперед, без мерджів і без
     ризику зачепити незакомічені правки. Якщо щось не так (нема git, нема мережі, нема
     репозиторію, локальні зміни, розбіжна історія) — тихо пропускаємо крок: бот має
     стартувати з тим кодом, що є, а не падати через недоступний GitHub.
+    Сторонні (untracked) файли — діагностичні картинки тощо — оновленню не заважають.
     """
     git = shutil.which("git")
     if git is None:
         return
     try:
-        if subprocess.run([git, "rev-parse", "--is-inside-work-tree"], cwd=str(ROOT),
-                          capture_output=True, timeout=10).returncode != 0:
+        if _git(git, "rev-parse", "--is-inside-work-tree").returncode != 0:
             return
-        dirty = subprocess.run([git, "status", "--porcelain"], cwd=str(ROOT),
-                               capture_output=True, text=True, timeout=10)
+        _release_template(git)
+        dirty = _git(git, "status", "--porcelain", "--untracked-files=no")
         if dirty.stdout.strip():
             print("git: є незакомічені зміни — пропускаю автооновлення", flush=True)
             return
-        before = subprocess.run([git, "rev-parse", "HEAD"], cwd=str(ROOT),
-                                capture_output=True, text=True, timeout=10).stdout.strip()
-        pull = subprocess.run([git, "pull", "--ff-only"], cwd=str(ROOT),
-                              capture_output=True, text=True, timeout=30)
+        before = _git(git, "rev-parse", "HEAD").stdout.strip()
+        pull = _git(git, "pull", "--ff-only", timeout=30)
         if pull.returncode != 0:
             print(f"git: оновлення пропущено ({pull.stderr.strip().splitlines()[-1:] or pull.stdout.strip()})",
                   flush=True)
             return
-        after = subprocess.run([git, "rev-parse", "HEAD"], cwd=str(ROOT),
-                               capture_output=True, text=True, timeout=10).stdout.strip()
+        after = _git(git, "rev-parse", "HEAD").stdout.strip()
         if before != after:
             print(f"git: оновлено {before[:7]} -> {after[:7]}", flush=True)
     except (OSError, subprocess.SubprocessError):
         pass  # мережа, права доступу тощо — не критично, працюємо з тим, що є
-
 
 def _settings(args: argparse.Namespace):
     from app.config.loader import load_config

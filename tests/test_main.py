@@ -162,3 +162,89 @@ def test_auto_update_does_not_crash_on_pull_failure(monkeypatch, capsys):
 def test_no_update_flag_is_available():
     args = entry.build_parser().parse_args(["--no-update"])
     assert args.no_update is True
+
+
+# ---- живий конфіг машини й шаблон ---------------------------------------------------------
+@pytest.fixture(autouse=True)
+def _no_template_release_by_default(request, monkeypatch):
+    """Крок «звільнити шаблон» торкається справжньої теки config/ — у тестах вимкнений,
+    окрім тестів нижче, які працюють на власному тимчасовому репозиторії."""
+    if "real_git" not in request.keywords:
+        monkeypatch.setattr(entry, "_release_template", lambda git: None)
+
+
+def _git_ok(*args, cwd):
+    import subprocess
+
+    return subprocess.run(["git", *args], cwd=str(cwd), capture_output=True, text=True, check=True)
+
+
+@pytest.fixture
+def temp_repo(tmp_path, monkeypatch):
+    """Справжній git-репозиторій із шаблоном config/windows.json і окремим local.json."""
+    import shutil
+
+    from app.core.settings import settings
+
+    if shutil.which("git") is None:
+        pytest.skip("git не встановлено")
+    repo = tmp_path / "repo"
+    (repo / "config").mkdir(parents=True)
+    _git_ok("init", "-q", cwd=repo)
+    _git_ok("config", "user.email", "t@t.t", cwd=repo)
+    _git_ok("config", "user.name", "t", cwd=repo)
+    (repo / "config" / "windows.json").write_text('{"template": true}', encoding="utf-8")
+    _git_ok("add", "-A", cwd=repo)
+    _git_ok("commit", "-qm", "init", cwd=repo)
+    monkeypatch.setattr(entry, "ROOT", repo)
+    monkeypatch.setattr(settings, "CONFIG_PATH", repo / "config" / "windows.json")
+    monkeypatch.setattr(settings, "LOCAL_CONFIG_PATH", repo / "config" / "local.json")
+    return repo
+
+
+@pytest.mark.real_git
+def test_dirty_template_is_moved_into_local_config_and_restored(temp_repo):
+    """
+    Старий сервер писав живі налаштування прямо в windows.json — той лишався «брудним»
+    і блокував автооновлення. Тепер вони спершу переїжджають у local.json, а шаблон
+    повертається до стану репозиторію.
+    """
+    (temp_repo / "config" / "windows.json").write_text('{"live": "machine settings"}', encoding="utf-8")
+    entry._release_template("git")
+    assert (temp_repo / "config" / "local.json").read_text(encoding="utf-8") == '{"live": "machine settings"}'
+    assert (temp_repo / "config" / "windows.json").read_text(encoding="utf-8") == '{"template": true}'
+    assert _git_ok("status", "--porcelain", "--untracked-files=no", cwd=temp_repo).stdout.strip() == ""
+
+
+@pytest.mark.real_git
+def test_existing_local_config_is_never_overwritten(temp_repo):
+    (temp_repo / "config" / "local.json").write_text('{"mine": 1}', encoding="utf-8")
+    (temp_repo / "config" / "windows.json").write_text('{"edited": 1}', encoding="utf-8")
+    entry._release_template("git")
+    assert (temp_repo / "config" / "local.json").read_text(encoding="utf-8") == '{"mine": 1}'
+
+
+@pytest.mark.real_git
+def test_clean_template_just_seeds_local_config(temp_repo):
+    entry._release_template("git")
+    assert (temp_repo / "config" / "local.json").read_text(encoding="utf-8") == '{"template": true}'
+
+
+@pytest.mark.real_git
+def test_untracked_files_do_not_block_the_update(temp_repo, monkeypatch):
+    """Діагностичні картинки в теці (diag_*.png) — не «незакомічені зміни»."""
+    (temp_repo / "diag_frame.png").write_bytes(b"png")
+    runs = []
+    real_run = entry.subprocess.run
+
+    def spy(cmd, **kw):
+        runs.append(cmd[1:3])
+        if cmd[1:3] == ["pull", "--ff-only"]:
+            class R:
+                returncode, stdout, stderr = 0, "Already up to date.", ""
+            return R()
+        return real_run(cmd, **kw)
+
+    monkeypatch.setattr(entry.subprocess, "run", spy)
+    entry.auto_update()
+    assert ["pull", "--ff-only"] in runs, "сторонній файл не має заважати pull"

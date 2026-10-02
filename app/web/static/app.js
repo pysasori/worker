@@ -28,6 +28,7 @@ const CATEGORY = {
 const S = {
   config: null, catalog: [], state: null,
   window: null,          // ім'я вибраного вікна (нік персонажа)
+  removed: new Set(),    // персонажі, яких прибрали в інтерфейсі, але ще не зберегли
   profile: null,         // який профіль браузиться в конструкторі; null = профіль вибраного персонажа
   dirty: false, open: {}, timer: null, cardsKey: "",
   // технічні поля (зони, кольори, пороги) сховані: вони потрібні лише
@@ -325,7 +326,7 @@ const metaOf = (type) => S.catalog.find((c) => c.type === type)
   || { schema: {}, provides: [], requires: [], category: "інше", label: type, run_order: 0 };
 
 /* Вікна — це персонажі: онлайн-клієнти від сканера плюс ті, чиї вікна зараз закриті. */
-const entries = () => S.state?.windows || [];
+const entries = () => (S.state?.windows || []).filter((w) => !(w.nick && S.removed.has(w.nick) && !w.online));
 const currentEntry = () => entries().find((w) => w.name === S.window) || entries()[0] || null;
 const charOf = (entry) => (entry && entry.nick ? S.config.characters[entry.nick] : null) || null;
 const currentChar = () => charOf(currentEntry());
@@ -416,6 +417,12 @@ function renderWindows() {
       }
     };
     row.append(dot, title, run);
+    if (!entry.online && char) {
+      const gone = el("button", "quiet window-remove", "×");
+      gone.title = "прибрати зі списку (вікно закрите)";
+      gone.onclick = (e) => { e.stopPropagation(); removeCharacter(entry); };
+      row.appendChild(gone);
+    }
     card.appendChild(row);
 
     const meta = el("div", "stats");
@@ -571,14 +578,24 @@ function windowSettings(entry, char) {
 
   if (!entry.online) {
     const del = el("button", "quiet", "прибрати зі списку");
-    del.onclick = () => {
-      delete S.config.characters[entry.nick];
-      S.window = null;
-      markDirty(); render();
-    };
+    del.onclick = () => removeCharacter(entry);
     box.appendChild(del);
   }
   return box;
+}
+
+/* Прибрати персонажа, чиє вікно зараз закрите. Зберігається звичайним «Зберегти».
+   Без S.removed сервер (де видалення ще не збережене) далі віддавав би цього персонажа
+   в /api/state, і adoptNewCharacters() за секунду повертав би його назад — видалення
+   здавалось «непрацюючим». */
+function removeCharacter(entry) {
+  if (!entry || !entry.nick || entry.online) return;
+  delete S.config.characters[entry.nick];
+  S.removed.add(entry.nick);
+  if (S.window === entry.name) S.window = null;
+  markDirty();
+  render();
+  toast(`«${entry.nick}» прибрано зі списку — натисни «Зберегти»`, "ok");
 }
 
 /* ---------- пул профілів ---------- */
@@ -905,7 +922,8 @@ async function refreshPreview() {
 /* Сканер міг додати нового персонажа вже після того, як сторінку завантажено. Дописуємо
    лише відсутніх, щоб не затерти те, що користувач уже змінив і ще не зберіг. */
 async function adoptNewCharacters() {
-  const missing = entries().filter((e) => e.known && e.nick && !S.config.characters[e.nick]);
+  const missing = entries().filter((e) => e.known && e.nick && !S.config.characters[e.nick]
+                                      && !S.removed.has(e.nick));
   if (!missing.length) return false;
   const fresh = await api.get("/api/config");
   let added = false;
@@ -1004,6 +1022,7 @@ $("btnSave").onclick = async () => {
 
 async function saveConfig() {
   S.config = await api.put("/api/config", S.config);
+  S.removed.clear();              // сервер уже без них — ховати більше нема чого
   S.dirty = false;
   S.warnedDirty = false;
   $("btnSave").disabled = true;

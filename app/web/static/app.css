@@ -321,3 +321,5 @@ fieldset.group-box .inner { display: grid; grid-template-columns: repeat(2, minm
 .event-line.warn { color: var(--warn); }
 .event-line.warn .w { color: var(--warn); }
 .events-empty { color: var(--text-faint); }
+
+.window-remove { padding: 4px 9px; min-height: 28px; font-size: 14px; line-height: 1; }

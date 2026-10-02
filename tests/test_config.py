@@ -58,3 +58,32 @@ def test_unknown_setting_does_not_break_the_start():
     pipe = build_pipeline("repair", {"every": 900, "shop_icon": {"x": 464, "y": 293}})
     assert pipe.config.every == 900
     assert not hasattr(pipe.config, "shop_icon")
+
+
+# ---- живий конфіг машини й шаблон ---------------------------------------------------------
+def test_runtime_config_is_seeded_from_the_template_and_then_left_alone(tmp_path, monkeypatch):
+    """
+    config/windows.json — шаблон у git, config/local.json — живий конфіг машини. Налаштування
+    в кожного бота свої, тому local.json (у .gitignore) створюється з шаблону один раз і
+    далі не перезаписується шаблоном.
+    """
+    from app.config import loader
+    from app.core.settings import settings
+
+    template = tmp_path / "windows.json"
+    local = tmp_path / "local.json"
+    template.write_text('{"profiles": {"p": {}}, "windows": []}', encoding="utf-8")
+    monkeypatch.setattr(settings, "CONFIG_PATH", template)
+    monkeypatch.setattr(settings, "LOCAL_CONFIG_PATH", local)
+
+    assert loader.runtime_config_path() == local and local.exists()
+    cfg = loader.load_config()
+    from app.config.schemas import CharacterConfig
+
+    cfg.characters["Mine"] = CharacterConfig(profile="p")
+    loader.save_config(cfg)
+    assert "Mine" in local.read_text(encoding="utf-8")
+    assert "Mine" not in template.read_text(encoding="utf-8"), "шаблон сервер не пише"
+
+    template.write_text('{"profiles": {"p": {}}, "windows": [], "default_profile": "p"}', encoding="utf-8")
+    assert "Mine" in loader.load_config().characters, "оновлений шаблон не затирає живий конфіг"
