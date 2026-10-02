@@ -10,7 +10,10 @@
 """
 from __future__ import annotations
 
+import hashlib
 import re
+import threading
+from collections import OrderedDict
 
 from PIL import Image, ImageChops, ImageOps
 from pydantic import BaseModel, Field
@@ -19,6 +22,15 @@ from app.core.geometry import Region
 from app.vision.text import OcrConfig, read_line
 
 _NUM = re.compile(r"\d+")
+
+# Персонаж здебільшого стоїть, і маска цифр щосекунди та сама. Кожне читання — це
+# окремий запуск tesseract.exe (~35 мс процесорного часу й створення процесу), а
+# при кількох вікнах таких запусків десятки на секунду — на слабкій машині бот
+# лагає. Ключ — сама маска цифр (не кадр: фон під панеллю плаває), тому зміна
+# координат одразу дає інший ключ і нове читання.
+_CACHE: OrderedDict[tuple, list[int]] = OrderedDict()
+_CACHE_LOCK = threading.Lock()
+_CACHE_MAX = 512
 
 
 class DigitsConfig(BaseModel):
@@ -59,6 +71,31 @@ def read_numbers(image: Image.Image, cfg: DigitsConfig, ocr: OcrConfig) -> list[
     box = (max(0, box[0] - cfg.pad), max(0, box[1] - cfg.pad),
            min(crop.width, box[2] + cfg.pad), min(crop.height, box[3] + cfg.pad))
     base = ImageOps.invert(mask.crop(box))
+    # Ключ кешу — сама маска цифр (не кадр: фон під панеллю плаває). Голосування нижче —
+    # до п'яти запусків tesseract за читання, а персонаж здебільшого стоїть і картинка
+    # та сама, тож без кешу ці запуски щосекунди з кожного вікна з'їдали б процесор.
+    key = (ocr.engine, cfg.color, base.size, hashlib.blake2b(base.tobytes(), digest_size=16).digest())
+    with _CACHE_LOCK:
+        hit = _CACHE.get(key)
+        if hit is not None:
+            _CACHE.move_to_end(key)
+            return list(hit)
+    numbers = _vote(base, cfg, ocr)
+    if numbers:                       # порожнє = OCR не спрацював; його не запам'ятовуємо
+        with _CACHE_LOCK:
+            _CACHE[key] = numbers
+            while len(_CACHE) > _CACHE_MAX:
+                _CACHE.popitem(last=False)
+    return numbers
+
+
+def clear_cache() -> None:
+    """Для тестів і для випадку, коли змінили налаштування OCR."""
+    with _CACHE_LOCK:
+        _CACHE.clear()
+
+
+def _vote(base: Image.Image, cfg: DigitsConfig, ocr: OcrConfig) -> list[int]:
     # Tesseract на такому дрібному тексті хитається («586» -> «566», кома губиться або
     # зливає числа в «244586»). Тому читаємо кількома способами й беремо збіг двох.
     votes: dict[tuple[int, ...], int] = {}

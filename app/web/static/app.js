@@ -514,6 +514,7 @@ function fillStats(node, entry) {
   node.innerHTML = "";
   const id = entry.hwnd ? `#${entry.hwnd} · ${entry.width}×${entry.height} · ` : "";
   node.appendChild(el("div", "", id + statusLine(entry)));
+  if (entry.connected && entry.timing) node.appendChild(el("div", "", "⏱ " + entry.timing));
   if (entry.connected) {
     Object.entries(entry.pipelines || {}).filter(([, v]) => v).slice(0, 3)
       .forEach(([k, v]) => node.appendChild(el("div", "", `${metaOf(k).label}: ${v}`)));

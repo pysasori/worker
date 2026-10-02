@@ -627,3 +627,32 @@ def test_status_log_interval_can_be_switched_off(running):
         every = svc.config.settings.status_log_every
     assert every == 0
     assert len(ring_buffer.recent(limit=10_000)) == before
+
+
+# ---- розбивка часу тіка ----------------------------------------------------------------
+def test_timing_is_empty_until_there_is_data():
+    from app.runtime.session import SessionStatus
+
+    assert SessionStatus(window="A").timing() == ""
+
+
+def test_timing_names_the_heaviest_pipelines():
+    from app.runtime.session import SessionStatus
+
+    st = SessionStatus(window="A", fps=15.2, grab_ms=14.0, logic_ms=6.0, act_ms=3.0,
+                       slow={"position": 2.4, "return_home": 31.0, "heal": 0.2})
+    text = st.timing()
+    assert "15.2 к/с" in text and "кадр 14" in text and "логіка 6" in text and "дії 3" in text
+    assert "return_home 31" in text and "position 2" in text
+    assert "heal" not in text, "дрібниці менше 1 мс не засмічують рядок"
+
+
+def test_status_log_line_carries_the_timing(running):
+    from app.core.logging import ring_buffer
+
+    svc = running
+    st = svc.orchestrator._slots["A"].session.status
+    st.grab_ms, st.logic_ms, st.act_ms, st.fps = 12.0, 5.0, 1.0, 16.0
+    svc.log_status_once()
+    assert any("⏱" in e.message and "кадр 12" in e.message
+               for e in ring_buffer.recent(window="A", limit=50))

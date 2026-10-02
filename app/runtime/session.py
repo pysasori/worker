@@ -35,6 +35,20 @@ class SessionStatus:
     fps: float = 0.0
     last_error: str = ""
     pipelines: dict[str, str] = field(default_factory=dict)
+    # куди йде час тіка, мс (ковзне середнє): без цього «бот лагає» неможливо розібрати
+    grab_ms: float = 0.0          # зняти кадр вікна
+    logic_ms: float = 0.0         # усі пайплайни разом, без виконання дій
+    act_ms: float = 0.0           # виконання дій (миша/клавіші, з їхніми паузами)
+    slow: dict[str, float] = field(default_factory=dict)   # пайплайн -> мс (ковзне середнє)
+
+    def timing(self) -> str:
+        """Розбивка часу тіка для рядка в консолі. Порожньо, поки нема даних."""
+        if not self.grab_ms and not self.logic_ms:
+            return ""
+        top = sorted(self.slow.items(), key=lambda kv: -kv[1])[:2]
+        worst = ", ".join(f"{n} {ms:.0f}" for n, ms in top if ms >= 1.0)
+        return (f"{self.fps:.1f} к/с · кадр {self.grab_ms:.0f} / логіка {self.logic_ms:.0f} / "
+                f"дії {self.act_ms:.0f} мс" + (f" · важчі: {worst} мс" if worst else ""))
 
     def body(self) -> str:
         """Рядок статусу без імені вікна — для логера, який ім'я вже додає сам."""
@@ -108,8 +122,10 @@ class WindowSession:
             return self.status
         assert self.capture and self.executor and self.input
 
+        t_grab = time.perf_counter()
         try:
             frame = Frame(image=self.capture.grab())
+            grab_ms = (time.perf_counter() - t_grab) * 1000
         except WindowGoneError as e:
             self.log.warning("%s", e.message)
             self.status.connected = False
@@ -130,15 +146,22 @@ class WindowSession:
             shared=self.shared,
         )
 
+        logic = act = 0.0
         for pipeline in self.pipelines:
             # і рішення, і виконання дій — під одним захистом: збій у клавішах
             # (вікно моргнуло, гра перемальовується) не має валити решту пайплайнів
+            t0 = time.perf_counter()
             try:
                 result = pipeline.process(ctx)
+                spent = time.perf_counter() - t0
+                logic += spent
+                self._ema(self.status.slow, pipeline.name, spent * 1000)
                 for event in result.events:
                     self.log.info("[%s] %s", pipeline.name, event)
                 if result.actions:
+                    t1 = time.perf_counter()
                     done = self.executor.run(result.actions)
+                    act += time.perf_counter() - t1
                     self.log.debug("[%s] -> %s", pipeline.name, "; ".join(done))
                 self.status.pipelines[pipeline.name] = result.status
             except BotError as e:
@@ -146,8 +169,21 @@ class WindowSession:
             except Exception:
                 self.log.exception("[%s] несподівана помилка", pipeline.name)
 
+        st = self.status
+        self._ema_value(st, "grab_ms", grab_ms)
+        self._ema_value(st, "logic_ms", logic * 1000)
+        self._ema_value(st, "act_ms", act * 1000)
         self.status.tick = self._tick
         return self.status
+
+    @staticmethod
+    def _ema(bucket: dict[str, float], key: str, value_ms: float, alpha: float = 0.1) -> None:
+        bucket[key] = bucket.get(key, value_ms) * (1 - alpha) + value_ms * alpha
+
+    @staticmethod
+    def _ema_value(status: SessionStatus, attr: str, value_ms: float, alpha: float = 0.1) -> None:
+        old = getattr(status, attr)
+        setattr(status, attr, value_ms if old == 0.0 else old * (1 - alpha) + value_ms * alpha)
 
     # ---- цикл ----------------------------------------------------------------
     def run_forever(self, stop_flag) -> None:

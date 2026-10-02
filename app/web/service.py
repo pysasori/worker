@@ -227,7 +227,8 @@ class BotService:
             if not self.is_running():
                 return
             for st in self.orchestrator.statuses():
-                window_logger(st.window).info(st.body())
+                timing = st.timing()
+                window_logger(st.window).info(st.body() + (f" | ⏱ {timing}" if timing else ""))
 
     def _maybe_autostart(self) -> None:
         """Автостарт: один раз, після першого скану, якщо бота не зупинено рукою."""
@@ -425,6 +426,7 @@ class BotService:
                     "fps": round(st.fps, 1) if st else 0.0,
                     "error": st.last_error if st else "",
                     "pipelines": dict(st.pipelines) if st else {},
+                    "timing": st.timing() if st else "",
                 }
 
             for f in self.found:
