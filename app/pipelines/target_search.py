@@ -197,6 +197,12 @@ class TargetSearchPipeline(Pipeline):
             # хтось зайнятий довгою дією (збирає лут) — не перебиваємо новою ціллю
             return PipelineResult(events=res.events, status=f"чекаю: {', '.join(sorted(busy))}")
         res.events += self._idle_warning(ctx)
+        if reading.present and not self.skip_current:
+            # рамка цілі вже на екрані, але ще не підтверджена (confirm_frames): Tab зараз
+            # збив би щойно взяту ціль. При рідкісних кадрах (2/с) пауза між пошуками
+            # спливала саме на цьому кадрі, і бот тиснув Tab двічі-тричі поспіль
+            res.status = "підтверджую ціль"
+            return res
         if cfg.target_key and ctx.now - self.last_search >= cfg.retarget_delay:
             self.last_search = ctx.now
             self.skip_current = False        # перемкнулись — наступну ціль дивимось наново
