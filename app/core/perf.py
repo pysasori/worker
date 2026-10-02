@@ -28,8 +28,13 @@ def tune_process(low_priority: bool = True, cv_threads: int = 1) -> None:
     if low_priority and sys.platform == "win32":
         try:
             import ctypes
-            kernel32 = ctypes.windll.kernel32
+            from ctypes import wintypes
+            # без явних типів 64-бітний HANDLE обрізається до int і виклик мовчки не діє
+            kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+            kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+            kernel32.SetPriorityClass.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+            kernel32.SetPriorityClass.restype = wintypes.BOOL
             if not kernel32.SetPriorityClass(kernel32.GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS):
-                log.warning("не вдалось знизити пріоритет процесу")
+                log.warning("не вдалось знизити пріоритет процесу (код %s)", ctypes.get_last_error())
         except Exception:
             pass
