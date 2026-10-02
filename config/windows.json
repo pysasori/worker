@@ -3403,7 +3403,7 @@
         "hwnd": null
       },
       "enabled": true,
-      "poll_interval": 0.2,
+      "poll_interval": 0.5,
       "overrides": {}
     }
   ],
@@ -3413,7 +3413,7 @@
       "label": "",
       "aliases": [],
       "enabled": true,
-      "poll_interval": 0.2,
+      "poll_interval": 0.5,
       "overrides": {}
     },
     "BroWorker": {
@@ -3421,7 +3421,7 @@
       "label": "",
       "aliases": [],
       "enabled": true,
-      "poll_interval": 0.2,
+      "poll_interval": 0.5,
       "overrides": {}
     },
     "Elinalise": {
@@ -3429,7 +3429,7 @@
       "label": "",
       "aliases": [],
       "enabled": false,
-      "poll_interval": 0.2,
+      "poll_interval": 0.5,
       "overrides": {}
     },
     "cookie": {
@@ -3437,7 +3437,7 @@
       "label": "",
       "aliases": [],
       "enabled": false,
-      "poll_interval": 0.2,
+      "poll_interval": 0.5,
       "overrides": {}
     },
     "LoveSiti": {
@@ -3445,7 +3445,7 @@
       "label": "",
       "aliases": [],
       "enabled": true,
-      "poll_interval": 0.2,
+      "poll_interval": 0.5,
       "overrides": {}
     },
     "Karasu": {
@@ -3453,7 +3453,7 @@
       "label": "",
       "aliases": [],
       "enabled": true,
-      "poll_interval": 0.2,
+      "poll_interval": 0.5,
       "overrides": {}
     },
     "Kuroari": {
@@ -3461,7 +3461,7 @@
       "label": "",
       "aliases": [],
       "enabled": true,
-      "poll_interval": 0.2,
+      "poll_interval": 0.5,
       "overrides": {}
     }
   },
