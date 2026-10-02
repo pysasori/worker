@@ -67,6 +67,20 @@ class AppSettings(BaseModel):
                       json_schema_extra={"tech": True})
     nick: NickConfig = Field(default_factory=NickConfig, title="Читання ніка з екрана",
                              json_schema_extra={"tech": True})
+    skip_same_frames: bool = Field(
+        default=True, title="Пропускати однакові кадри",
+        description="гра на слабкій машині малює 3-5 кадрів/с, а бот знімає частіше. Кадр, ідентичний "
+                    "попередньому, нічого нового не каже — аналіз пропускається (таймери й клавіші "
+                    "все одно ідуть, щонайбільше з півсекундною затримкою)",
+        json_schema_extra={"tech": True})
+    low_priority: bool = Field(
+        default=True, title="Знизити пріоритет бота",
+        description="коли процесора не вистачає, лагає бот, а не клієнти гри. Діє після перезапуску",
+        json_schema_extra={"tech": True})
+    cv_threads: int = Field(
+        default=1, ge=1, le=32, title="Потоків OpenCV на один пошук",
+        description="1 швидше й легше за «всі ядра» (виміряно), особливо коли вікон кілька. "
+                    "Діє після перезапуску", json_schema_extra={"tech": True})
     status_log_every: float = Field(default=20.0, ge=0, title="Писати стан у консоль раз на, с",
                                     description="0 = не писати. Той самий рядок, що й у картці вікна "
                                                 "в інтерфейсі (HP, координати, ціль, кожен пайплайн) — "

@@ -36,6 +36,7 @@ def make_session(image: Image.Image) -> tuple[WindowSession, FakeCapture, NullIn
     for spec in config.profiles[config.windows[0].profile].pipelines:
         if spec.type == "target_search":
             spec.config["names"] = {**spec.config.get("names", {}), "enabled": False}
+    config.settings.skip_same_frames = False       # тести ганяють один і той самий кадр багато разів
     session = WindowSession(config.windows[0], config, dry_run=False)
     # Загальні runtime-тести моделюють уже перевірене місце фарму. Окремо стартовий
     # бойовий шлюз перевіряється в test_return_home/test_pipelines.
@@ -180,3 +181,58 @@ def test_gdi_error_every_time_becomes_a_capture_error(monkeypatch):
     monkeypatch.setattr(cap, "_grab_once", boom)
     with _pytest.raises(CaptureError, match="CreateCompatibleDC"):
         cap.grab()
+
+
+# ---- однакові кадри ------------------------------------------------------------------
+def _session_skipping(image):
+    session, capture, sink = make_session(image)
+    session.bot_cfg.settings.skip_same_frames = True
+    return session, capture, sink
+
+
+def test_identical_frame_skips_analysis(real_frame):
+    session, _, _ = _session_skipping(real_frame)
+    runs = []
+    session.pipelines = [type("P", (), {"name": "spy", "process": lambda self, ctx: runs.append(ctx.tick)
+                                        or __import__("app.pipelines.actions", fromlist=["x"]).PipelineResult()})()]
+    session.tick()
+    session.tick()
+    assert runs == [1], "другий кадр ідентичний — аналіз не потрібен"
+    assert session.status.tick == 2, "лічильник тіків іде: за ним наглядач бачить, що цикл живий"
+
+
+def test_one_changed_pixel_is_not_a_duplicate(real_frame):
+    """Смужка HP міняється на піксель-два — такий кадр пропускати не можна."""
+    session, capture, _ = _session_skipping(real_frame)
+    seen = []
+    session.pipelines = [type("P", (), {"name": "spy", "process": lambda self, ctx: seen.append(ctx.tick)
+                                        or __import__("app.pipelines.actions", fromlist=["x"]).PipelineResult()})()]
+    session.tick()
+    changed = real_frame.copy()
+    changed.putpixel((700, 12), (1, 2, 3) if changed.getpixel((700, 12)) != (1, 2, 3) else (9, 9, 9))
+    capture.image = changed
+    session.tick()
+    assert seen == [1, 2]
+
+
+def test_frozen_picture_still_runs_logic_periodically(real_frame, monkeypatch):
+    """Завислий кадр: таймери (лут, клавіші) мають рухатись, тож раз на MAX_SKIP_S аналіз іде."""
+    import app.runtime.session as mod
+    session, _, _ = _session_skipping(real_frame)
+    seen = []
+    session.pipelines = [type("P", (), {"name": "spy", "process": lambda self, ctx: seen.append(ctx.tick)
+                                        or __import__("app.pipelines.actions", fromlist=["x"]).PipelineResult()})()]
+    monkeypatch.setattr(mod, "MAX_SKIP_S", 0.0)
+    session.tick()
+    session.tick()
+    assert seen == [1, 2]
+
+
+def test_same_frames_disabled_in_settings(real_frame):
+    session, _, _ = make_session(real_frame)          # skip_same_frames=False
+    seen = []
+    session.pipelines = [type("P", (), {"name": "spy", "process": lambda self, ctx: seen.append(ctx.tick)
+                                        or __import__("app.pipelines.actions", fromlist=["x"]).PipelineResult()})()]
+    session.tick()
+    session.tick()
+    assert seen == [1, 2]

@@ -146,6 +146,7 @@ class RepairPipeline(Pipeline):
         self.idle_since: float | None = None
         self.deadline = 0.0
         self.before = None              # кадр до відкриття рюкзака
+        self._damage_cache = None       # (кадр, (знос, поломка)): _recheck і _due не дивляться вдруге
 
     # ---- умови --------------------------------------------------------------
     def _in_combat(self, ctx: PipelineContext) -> bool:
@@ -194,9 +195,13 @@ class RepairPipeline(Pipeline):
 
     def _damage_visible(self, frame) -> tuple[bool, bool]:
         """Повернути окремо звичайний знос і червону поломку."""
+        cached = self._damage_cache
+        if cached is not None and cached[0] is frame:      # на цей кадр уже дивились у цьому ж тіку
+            return cached[1]
         cfg: RepairConfig = self.config
         worn = find_template(frame, cfg.worn_icon) is not None
         broken = any(marker_present(frame, marker) for marker in cfg.broken_markers)
+        self._damage_cache = (frame, (worn, broken))
         return worn, broken
 
     def _confirmed_damage(self, ctx: PipelineContext) -> tuple[bool, bool]:

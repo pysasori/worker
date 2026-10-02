@@ -249,3 +249,50 @@ def test_not_at_the_farm_after_the_flight_means_another_try():
     res = step(pipe, LIST_CLOSED, 26.0, shared, Position(x=520, y=900, known=True))
     assert pipe.state is DeathState.OPEN_LIST
     assert any("пробую ще раз" in e for e in res.events)
+
+
+# ---- рідші перевірки, поки персонаж живий ---------------------------------------------
+def _scan_counter(pipe):
+    calls = []
+    real = pipe._dead
+    pipe._dead = lambda frame: calls.append(1) or real(frame)
+    return calls
+
+
+def test_death_window_is_searched_rarely_while_hp_is_visible():
+    from app.pipelines.shared import SHARED_PLAYER
+    from app.vision.bars import BarReading
+    pipe, shared = DeathReturnPipeline(cfg(check_every=0.5, alive_check_every=4.0)), {}
+    shared[SHARED_PLAYER] = BarReading(present=True, filled=100, total=100)
+    calls = _scan_counter(pipe)
+    for i in range(20):                                   # 4 с по 0.2 с
+        step(pipe, ALIVE, i * 0.2, shared)
+    assert len(calls) == 1, "HP є — три пошуки шаблонів щопівсекунди не потрібні"
+
+
+def test_death_window_is_searched_often_when_hp_is_empty_or_unknown():
+    from app.pipelines.shared import SHARED_PLAYER
+    from app.vision.bars import BarReading
+    for player in (BarReading(present=False), None):
+        pipe, shared = DeathReturnPipeline(cfg(check_every=0.5, alive_check_every=4.0)), {}
+        if player is not None:
+            shared[SHARED_PLAYER] = player
+        calls = _scan_counter(pipe)
+        for i in range(20):
+            step(pipe, ALIVE, i * 0.2, shared)
+        assert len(calls) >= 7, f"HP {player}: дивимось щопівсекунди"
+
+
+def test_death_is_still_found_fast_when_hp_drops_to_zero():
+    from app.pipelines.shared import SHARED_PLAYER
+    from app.vision.bars import BarReading
+    pipe, shared = DeathReturnPipeline(cfg(check_every=0.5, alive_check_every=4.0)), {}
+    shared[SHARED_PLAYER] = BarReading(present=True, filled=100, total=100)
+    step(pipe, ALIVE, 0.0, shared)
+    shared[SHARED_PLAYER] = BarReading(present=False)      # загинув
+    res = None
+    for i in range(1, 12):
+        res = step(pipe, DEAD, i * 0.2, shared)
+        if clicks(res):
+            break
+    assert clicks(res), "після нуля HP вікно смерті шукаємо щопівсекунди й воскресаємо"

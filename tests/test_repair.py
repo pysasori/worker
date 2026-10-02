@@ -608,3 +608,29 @@ def test_guard_ignores_a_clean_frame():
     for ts in (0.0, 1.0, 2.0):
         res = pipe.process(guard_ctx(clean, ts, {}))
         assert res.actions == [], "на чистому кадрі нічого не тиснемо"
+
+
+def test_dialog_guard_looks_rarely_when_nothing_suspicious():
+    from app.pipelines.dialog_guard import DialogGuardConfig, DialogGuardPipeline
+    pipe = DialogGuardPipeline(DialogGuardConfig(check_every=0.5, calm_check_every=2.0, windows=[]))
+    looks = []
+    pipe._look = lambda image: looks.append(1)             # нічого не знаходить
+    from app.pipelines.base import Frame, PipelineContext
+    image = Image.new("RGB", (64, 64))
+    for i in range(20):                                    # 4 с по 0.2 с
+        pipe.process(PipelineContext(window="t", frame=Frame(image=image, ts=i * 0.2), shared={}))
+    assert len(looks) == 2, "у спокої — раз на 2 с, а не щопівсекунди"
+
+
+def test_dialog_guard_confirms_a_suspicion_at_full_speed():
+    from app.pipelines.dialog_guard import DialogGuardConfig, DialogGuardPipeline
+    from app.pipelines.base import Frame, PipelineContext
+    pipe = DialogGuardPipeline(DialogGuardConfig(check_every=0.5, calm_check_every=2.0,
+                                                 confirm_frames=3, cooldown=0, windows=[]))
+    pipe._look = lambda image: "діалог"
+    image = Image.new("RGB", (64, 64))
+    presses = 0
+    for i in range(25):
+        res = pipe.process(PipelineContext(window="t", frame=Frame(image=image, ts=i * 0.2), shared={}))
+        presses += bool(res.actions)
+    assert presses >= 1, "щойно діалог видно — три підтвердження йдуть щопівсекунди й Esc натиснуто"

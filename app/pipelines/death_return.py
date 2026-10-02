@@ -89,6 +89,12 @@ class DeathReturnConfig(PipelineConfig):
     check_every: float = Field(default=0.5, ge=0, title="Шукати вікно смерті раз на, с",
                                json_schema_extra={"tech": True},
                                description="щокадру дорого: так уже гальмував сторож діалогів")
+    alive_check_every: float = Field(
+        default=4.0, ge=0, title="Шукати вікно смерті, поки HP є, раз на, с",
+        json_schema_extra={"tech": True},
+        description="вікно смерті з'являється лише коли HP на нулі. Поки смужка HP не порожня, "
+                    "три пошуки шаблонів по центру кадру (~25 мс на кожен) щопівсекунди — марна "
+                    "витрата. Без блоку лікування (HP невідоме) діє check_every")
     step_timeout: float = Field(default=10.0, gt=0, title="Чекати вікно, с", json_schema_extra={"tech": True})
     hover_delay: float = Field(default=0.35, ge=0, title="Наведення перед кліком, с",
                                json_schema_extra={"tech": True})
@@ -149,6 +155,13 @@ class DeathReturnPipeline(Pipeline):
         self.last_shot = float("-inf")
 
     # ---- допоміжне ----------------------------------------------------------------
+    def _check_every(self, ctx: PipelineContext) -> float:
+        """Як часто шукати вікно смерті: рідко, поки персонаж живий (HP видно), і щопівсекунди інакше."""
+        cfg: DeathReturnConfig = self.config
+        hp = read_player(ctx.shared)
+        alive = hp is not None and hp.present and self.seen == 0
+        return max(cfg.check_every, cfg.alive_check_every) if alive else cfg.check_every
+
     def _dead(self, frame) -> bool:
         return any(find_template(frame, sign) is not None for sign in self.config.death_signs)
 
@@ -219,7 +232,7 @@ class DeathReturnPipeline(Pipeline):
             DeathState.VERIFY: self._verify,
         }[self.state]
         if self.state is DeathState.IDLE:
-            if ctx.now - self.last_check < cfg.check_every and not self.probe.pending:
+            if ctx.now - self.last_check < self._check_every(ctx) and not self.probe.pending:
                 return PipelineResult.idle("схоже, персонаж загинув" if self.seen else "")
             if not self.probe.pending:
                 self.last_check = ctx.now

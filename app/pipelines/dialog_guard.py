@@ -66,6 +66,11 @@ class DialogGuardConfig(PipelineConfig):
     check_every: float = Field(default=0.5, ge=0, title="Перевіряти раз на, с",
                                json_schema_extra={"tech": True},
                                description="діалог висить секундами, дивитись щокадру немає сенсу")
+    calm_check_every: float = Field(
+        default=1.5, ge=0, title="Перевіряти у спокої раз на, с",
+        json_schema_extra={"tech": True},
+        description="поки жодної ознаки діалога не було, шукаємо рідко (кожен пошук ~8 мс на вікно); "
+                    "щойно щось побачили — підтверджуємо щопівсекунди (check_every)")
     snapshot_dir: str = Field(default="logs/shots", title="Куди зберігати знімок діалогу",
                               json_schema_extra={"tech": True},
                               description="порожньо = не зберігати. Інакше кадр лягає на диск разом "
@@ -101,7 +106,9 @@ class DialogGuardPipeline(Pipeline):
             self.seen = 0
             return PipelineResult.idle()
 
-        due = ctx.now - self.last_check >= cfg.check_every
+        interval = cfg.check_every if (self.seen or self.probe.pending) else max(cfg.check_every,
+                                                                              cfg.calm_check_every)
+        due = ctx.now - self.last_check >= interval
         if due:
             self.last_check = ctx.now
         image = ctx.frame.image

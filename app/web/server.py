@@ -186,7 +186,11 @@ def _keep_awake() -> None:
 def run(host: str = "127.0.0.1", port: int = 8765, config_path: Path | None = None) -> None:
     import uvicorn
 
+    from app.config.loader import load_config
     from app.core.background import enable
+    from app.core.perf import tune_process
+    settings = load_config(config_path).settings
+    tune_process(settings.low_priority, settings.cv_threads)
     enable()      # важкий аналіз кадру — у фоні, щоб тік не гальмував
     _keep_awake()
     uvicorn.run(create_app(config_path), host=host, port=port, log_level="warning")

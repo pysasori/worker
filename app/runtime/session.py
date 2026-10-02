@@ -10,6 +10,8 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 
+import numpy as np
+
 from app.capture.abstract import CapturePort
 from app.capture.win32 import Win32WindowCapture
 from app.capture.window_finder import resolve_window
@@ -22,6 +24,10 @@ from app.pipelines.base import Frame, Pipeline, PipelineContext
 from app.pipelines.registry import build_pipeline
 from app.pipelines.wiring import describe_wiring, order_pipelines
 from app.runtime.executor import ActionExecutor
+
+# Кадр, ідентичний попередньому, не несе нових даних, але таймери (лут, кулдауни, клавіші)
+# мають рухатись і на завислій картинці: тому логіку все одно запускаємо не рідше за це
+MAX_SKIP_S = 0.5
 
 
 @dataclass
@@ -40,6 +46,7 @@ class SessionStatus:
     logic_ms: float = 0.0         # усі пайплайни разом, без виконання дій
     act_ms: float = 0.0           # виконання дій (миша/клавіші, з їхніми паузами)
     slow: dict[str, float] = field(default_factory=dict)   # пайплайн -> мс (ковзне середнє)
+    same_ratio: float = 0.0       # частка кадрів, ідентичних попередньому (ковзне середнє, 0..1)
 
     def timing(self) -> str:
         """Розбивка часу тіка для рядка в консолі. Порожньо, поки нема даних."""
@@ -48,7 +55,9 @@ class SessionStatus:
         top = sorted(self.slow.items(), key=lambda kv: -kv[1])[:2]
         worst = ", ".join(f"{n} {ms:.0f}" for n, ms in top if ms >= 1.0)
         return (f"{self.fps:.1f} к/с · кадр {self.grab_ms:.0f} / логіка {self.logic_ms:.0f} / "
-                f"дії {self.act_ms:.0f} мс" + (f" · важчі: {worst} мс" if worst else ""))
+                f"дії {self.act_ms:.0f} мс" + (f" · однакових кадрів {self.same_ratio:.0%}"
+                                               if self.same_ratio >= 0.05 else "")
+                + (f" · важчі: {worst} мс" if worst else ""))
 
     def body(self) -> str:
         """Рядок статусу без імені вікна — для логера, який ім'я вже додає сам."""
@@ -76,6 +85,8 @@ class WindowSession:
         self._tick = 0
         self.capture_failures = 0
         self._last_frame_ts = 0.0
+        self._prev_pixels: np.ndarray | None = None
+        self._last_logic_at = 0.0
 
     # ---- підготовка ----------------------------------------------------------
     def _build_pipelines(self) -> list[Pipeline]:
@@ -148,6 +159,12 @@ class WindowSession:
             self.status.fps = (1 / dt) if dt > 0 else 0.0
         self._last_frame_ts = frame.ts
 
+        if self._same_as_previous(frame):
+            self._ema_value(self.status, "grab_ms", grab_ms)
+            self.status.tick = self._tick          # цикл живий: наглядач стежить за цим лічильником
+            return self.status
+        self._last_logic_at = frame.ts
+
         ctx = PipelineContext(
             window=self.cfg.name,
             frame=frame,
@@ -185,6 +202,21 @@ class WindowSession:
         self._ema_value(st, "act_ms", act * 1000)
         self.status.tick = self._tick
         return self.status
+
+    def _same_as_previous(self, frame: Frame) -> bool:
+        """
+        Гра малює 3-5 кадрів/с, бот знімає частіше — решта кадрів дублі. Порівнюємо піксель
+        у піксель (дрібна зміна, наприклад смужка HP, не загубиться), це ~2 мс проти
+        десятків мс на аналіз. Раз на MAX_SKIP_S логіку запускаємо все одно.
+        """
+        if not self.bot_cfg.settings.skip_same_frames:
+            return False
+        pixels = np.asarray(frame.image)
+        prev, self._prev_pixels = self._prev_pixels, pixels
+        same = (prev is not None and prev.shape == pixels.shape and np.array_equal(prev, pixels)
+                and frame.ts - self._last_logic_at < MAX_SKIP_S)
+        self.status.same_ratio = self.status.same_ratio * 0.95 + (0.05 if same else 0.0)
+        return same
 
     @staticmethod
     def _ema(bucket: dict[str, float], key: str, value_ms: float, alpha: float = 0.1) -> None:
