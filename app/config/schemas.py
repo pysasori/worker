@@ -68,14 +68,15 @@ class AppSettings(BaseModel):
     nick: NickConfig = Field(default_factory=NickConfig, title="Читання ніка з екрана",
                              json_schema_extra={"tech": True})
     skip_same_frames: bool = Field(
-        default=True, title="Пропускати однакові кадри",
+        default=False, title="Пропускати однакові кадри",
         description="гра на слабкій машині малює 3-5 кадрів/с, а бот знімає частіше. Кадр, ідентичний "
                     "попередньому, нічого нового не каже — аналіз пропускається (таймери й клавіші "
                     "все одно ідуть, щонайбільше з півсекундною затримкою)",
         json_schema_extra={"tech": True})
     low_priority: bool = Field(
-        default=True, title="Знизити пріоритет бота",
-        description="коли процесора не вистачає, лагає бот, а не клієнти гри. Діє після перезапуску",
+        default=False, title="Знизити пріоритет бота",
+        description="коли процесора не вистачає, лагає бот, а не клієнти гри. УВАГА: на ВМ, де клієнти "
+                    "з'їдають увесь CPU, бот може лишитись без часу й стояти. Діє після перезапуску",
         json_schema_extra={"tech": True})
     cv_threads: int = Field(
         default=1, ge=1, le=32, title="Потоків OpenCV на один пошук",
