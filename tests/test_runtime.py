@@ -113,3 +113,70 @@ def test_executor_waits_but_sends_nothing_for_wait():
     done = executor.run([Wait(0.01, reason="труп"), PressKey("f2", reason="лут")])
     assert sink.sent == [("press", "f2")]
     assert "пауза" in done[0]
+
+
+# ---- збій знімка при кількох вікнах ------------------------------------------------------
+def test_one_failed_capture_does_not_disconnect_the_window(real_frame):
+    """
+    Живий випадок із виміру: при 5 вікнах одночасно GDI інколи відмовляє (CreateCompatibleDC).
+    Раніше це йшло як «збій тіку» й відключало вікно на 2+ секунди з перепідключенням.
+    """
+    from app.core.exceptions import CaptureError
+
+    session, capture, _ = make_session(real_frame)
+    original = capture.grab
+    calls = {"n": 0}
+
+    def flaky():
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise CaptureError("w: кадр не отримано")
+        return original()
+
+    capture.grab = flaky
+    session.tick()
+    assert session.status.connected, "разовий збій знімка не рве зв'язок"
+    assert session.status.tick == 0, "цей тік пропущено"
+    session.tick()
+    assert session.status.tick == 1 and session.capture_failures == 0, "наступний тік працює як завжди"
+
+
+def test_gdi_error_is_retried_inside_the_capture(monkeypatch):
+    import win32ui
+
+    from app.capture import win32 as cap_mod
+    from app.capture.win32 import Win32WindowCapture
+
+    monkeypatch.setattr(cap_mod.win32gui, "IsWindow", lambda h: True)
+    monkeypatch.setattr(cap_mod.win32gui, "IsIconic", lambda h: False)
+    cap = Win32WindowCapture(123, name="t", retries=3)
+    frames = [win32ui.error("CreateCompatibleDC failed"), Image.new("RGB", (4, 4), (200, 200, 200))]
+
+    def once(use_print_window=False):
+        item = frames.pop(0)
+        if isinstance(item, Exception):
+            raise item
+        return item
+
+    monkeypatch.setattr(cap, "_grab_once", once)
+    assert cap.grab().size == (4, 4), "перша спроба впала, друга віддала кадр"
+
+
+def test_gdi_error_every_time_becomes_a_capture_error(monkeypatch):
+    import win32ui
+    import pytest as _pytest
+
+    from app.capture import win32 as cap_mod
+    from app.capture.win32 import Win32WindowCapture
+    from app.core.exceptions import CaptureError
+
+    monkeypatch.setattr(cap_mod.win32gui, "IsWindow", lambda h: True)
+    monkeypatch.setattr(cap_mod.win32gui, "IsIconic", lambda h: False)
+    cap = Win32WindowCapture(123, name="t", retries=2)
+
+    def boom(use_print_window=False):
+        raise win32ui.error("CreateCompatibleDC failed")
+
+    monkeypatch.setattr(cap, "_grab_once", boom)
+    with _pytest.raises(CaptureError, match="CreateCompatibleDC"):
+        cap.grab()

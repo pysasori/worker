@@ -13,6 +13,7 @@ from __future__ import annotations
 import ctypes
 import time
 
+import pywintypes
 import win32con
 import win32gui
 import win32ui
@@ -49,13 +50,22 @@ class Win32WindowCapture(CapturePort):
         if win32gui.IsIconic(self.hwnd):
             raise WindowGoneError(self.name, "згорнуте")
         last: Image.Image | None = None
+        failure: Exception | None = None
         for attempt in range(max(1, self.retries)):
-            last = self._grab_once(use_print_window=attempt > 0)
+            try:
+                last = self._grab_once(use_print_window=attempt > 0)
+            except (win32ui.error, pywintypes.error) as exc:
+                # GDI інколи відмовляє на мить (CreateCompatibleDC), коли кілька вікон
+                # знімаються одночасно, — це не «вікно зникло», просто повторюємо
+                failure = exc
+                time.sleep(0.02)
+                continue
             if last.convert("L").getextrema()[1] > _BLACK_MAX_LUM:
                 return last
             time.sleep(0.03)
         if last is None:
-            raise CaptureError(f"{self.name}: кадр не отримано")
+            raise CaptureError(f"{self.name}: кадр не отримано ({failure})" if failure
+                               else f"{self.name}: кадр не отримано")
         return last  # усі спроби чорні — віддаємо як є, детектори побачать порожнечу
 
     def _grab_once(self, use_print_window: bool = False) -> Image.Image:

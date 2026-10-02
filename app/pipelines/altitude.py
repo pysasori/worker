@@ -14,13 +14,18 @@ from pydantic import Field
 from app.pipelines.actions import PipelineResult
 from app.pipelines.base import Pipeline, PipelineConfig, PipelineContext
 from app.pipelines.registry import register
-from app.pipelines.shared import SHARED_ALT, Altitude
+from app.pipelines.shared import SHARED_ALT, Altitude, busy_reasons, is_mounted
 from app.vision.digits import DigitsConfig, read_numbers
 from app.vision.text import OcrConfig
 
 
 class AltitudeConfig(PipelineConfig):
-    read_every: float = Field(default=1.0, ge=0, title="Перечитувати раз на, с")
+    read_every: float = Field(default=1.0, ge=0, title="Перечитувати раз на, с",
+                              description="швидкий режим: літаємо/їдемо додому/висота невідома")
+    calm_every: float = Field(default=15.0, ge=0, title="У спокої перечитувати раз на, с",
+                              description="0 = завжди раз на «Перечитувати». Спокій — персонаж "
+                                          "на землі й ніхто не їде; висота на місці фарму майже "
+                                          "не міняється, а кожне читання — запуск tesseract")
     forget_after: int = Field(default=5, ge=1, title="Забути після N невдач",
                               json_schema_extra={"tech": True})
     max_jump: int = Field(default=10, ge=0, title="Найбільша зміна за читання",
@@ -59,7 +64,7 @@ class AltitudePipeline(Pipeline):
 
     def process(self, ctx: PipelineContext) -> PipelineResult:
         cfg: AltitudeConfig = self.config
-        if ctx.now - self.last_read >= cfg.read_every:
+        if ctx.now - self.last_read >= self._interval(ctx):
             self.last_read = ctx.now
             numbers = read_numbers(ctx.frame.image, cfg.digits, cfg.ocr)
             if numbers and self._believable(numbers[-1], cfg):
@@ -71,6 +76,16 @@ class AltitudePipeline(Pipeline):
                     self.alt = Altitude(at=ctx.now)
         ctx.shared[SHARED_ALT] = self.alt
         return PipelineResult.idle(str(self.alt))
+
+    def _interval(self, ctx: PipelineContext) -> float:
+        """Швидко, поки висота важлива: невідома, читання хибить, їдемо/летимо, сидимо верхи."""
+        cfg: AltitudeConfig = self.config
+        if (not cfg.calm_every or not cfg.read_every          # read_every=0 — явне «щокадру»
+                or not self.alt.known or self.misses or self.jump is not None
+                or is_mounted(ctx.shared)
+                or busy_reasons(ctx.shared) & {"return_home", "death_return"}):
+            return cfg.read_every
+        return max(cfg.read_every, cfg.calm_every)
 
     def _believable(self, z: int, cfg: AltitudeConfig) -> bool:
         """

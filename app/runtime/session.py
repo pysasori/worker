@@ -14,7 +14,7 @@ from app.capture.abstract import CapturePort
 from app.capture.win32 import Win32WindowCapture
 from app.capture.window_finder import resolve_window
 from app.config.schemas import BotConfig, WindowConfig
-from app.core.exceptions import BotError, WindowGoneError, WindowNotFoundError
+from app.core.exceptions import BotError, CaptureError, WindowGoneError, WindowNotFoundError
 from app.core.logging import window_logger
 from app.input.abstract import InputPort
 from app.input.win32 import Win32MessageInput
@@ -74,6 +74,7 @@ class WindowSession:
         self.pipelines: list[Pipeline] = self._build_pipelines()
         self.shared: dict = {}
         self._tick = 0
+        self.capture_failures = 0
         self._last_frame_ts = 0.0
 
     # ---- підготовка ----------------------------------------------------------
@@ -131,6 +132,15 @@ class WindowSession:
             self.status.connected = False
             self.status.last_error = e.message
             return self.status
+        except CaptureError as e:
+            # разовий збій знімка (GDI) — пропускаємо тік, а не відключаємо вікно на 2+ секунди;
+            # якщо так тривалий час, наглядач перезапустить сесію, а не ми тут
+            self.capture_failures += 1
+            self.status.last_error = e.message
+            if self.capture_failures in (1, 50):
+                self.log.warning("%s (підряд: %d)", e.message, self.capture_failures)
+            return self.status
+        self.capture_failures = 0
 
         self._tick += 1
         if self._last_frame_ts:

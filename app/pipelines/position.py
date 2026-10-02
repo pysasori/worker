@@ -20,14 +20,23 @@ from app.core.background import Probe
 from app.pipelines.actions import PipelineResult
 from app.pipelines.base import Pipeline, PipelineConfig, PipelineContext
 from app.pipelines.registry import register
-from app.pipelines.shared import SHARED_HOME, SHARED_POS, Position
+from app.pipelines.shared import SHARED_HOME, SHARED_POS, Position, busy_reasons
 from app.vision.digits import DigitsConfig, read_numbers
 from app.vision.text import OcrConfig
 
 
 class PositionConfig(PipelineConfig):
     read_every: float = Field(default=1.0, ge=0, title="Перечитувати раз на, с",
-                              description="частіше не треба: читання коштує ~80 мс")
+                              description="швидкий режим — коли точність потрібна (їдемо додому, "
+                                          "після смерті, місце ще невідоме, відійшли від дому)")
+    calm_every: float = Field(default=15.0, ge=0, title="У спокої перечитувати раз на, с",
+                              description="0 = завжди раз на «Перечитувати». Спокій — місце відоме, "
+                                          "персонаж біля дому, ніхто не їде. Кожне читання — це "
+                                          "запуск tesseract, а при кількох вікнах їх десятки на "
+                                          "секунду; стоячому на фармі персонажу 15 с цілком досить")
+    calm_radius: float = Field(default=6.0, gt=0, title="Спокій, якщо ближче до дому, ніж",
+                               json_schema_extra={"tech": True},
+                               description="далі від дому читаємо швидко, щоб повернення почалось вчасно")
     forget_after: int = Field(default=5, ge=1, title="Забути після N невдач",
                               json_schema_extra={"tech": True},
                               description="панель могли закрити або перекрити вікном")
@@ -87,7 +96,7 @@ class PositionPipeline(Pipeline):
 
     def process(self, ctx: PipelineContext) -> PipelineResult:
         cfg: PositionConfig = self.config
-        due = ctx.now - self.last_read >= cfg.read_every
+        due = ctx.now - self.last_read >= self._interval(ctx)
         if due:
             self.last_read = ctx.now
         ready, numbers = self.probe.step(read_numbers, ctx.frame.image, cfg.digits, cfg.ocr, due=due)
@@ -96,6 +105,24 @@ class PositionPipeline(Pipeline):
         ctx.shared[SHARED_POS] = self.pos
         ctx.shared[SHARED_HOME] = self.home
         return self._report()
+
+    def _interval(self, ctx: PipelineContext) -> float:
+        """
+        Як часто читати зараз. Повільно (calm_every) лише коли все спокійно; щойно щось
+        потребує свіжих координат — швидко: місце ще невідоме або читання хибить, їде
+        повернення чи воскресіння (вони звіряють координати за секунди й мають busy),
+        персонаж відійшов від дому.
+        """
+        cfg: PositionConfig = self.config
+        if (not cfg.calm_every or not cfg.read_every          # read_every=0 — явне «щокадру»
+                or not self.pos.known or self.home is None or self.misses
+                or self.jump is not None):
+            return cfg.read_every
+        if busy_reasons(ctx.shared) & {"return_home", "death_return"}:
+            return cfg.read_every
+        if self.pos.distance_to(self.home) > cfg.calm_radius:
+            return cfg.read_every
+        return max(cfg.read_every, cfg.calm_every)
 
     def _report(self) -> PipelineResult:
         cfg: PositionConfig = self.config
