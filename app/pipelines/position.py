@@ -68,6 +68,23 @@ class PositionConfig(PipelineConfig):
                            json_schema_extra={"tech": True})
 
 
+def _is_subsequence(short: str, long: str) -> bool:
+    it = iter(long)
+    return all(ch in it for ch in short)
+
+
+def _digit_slip(new: int, old: int) -> bool:
+    """Нове число — це старе з однією цифрою менше (або більше): типова помилка OCR."""
+    a, b = str(new), str(old)
+    if a == b:
+        return False
+    if len(a) == len(b) - 1:
+        return _is_subsequence(a, b)
+    if len(a) == len(b) + 1:
+        return _is_subsequence(b, a)
+    return False
+
+
 @register
 class PositionPipeline(Pipeline):
     type_name = "position"
@@ -151,6 +168,13 @@ class PositionPipeline(Pipeline):
             return
         x, y = numbers[0], numbers[1]
         if max(x, y) > cfg.max_value or min(x, y) < cfg.min_value:   # цифри злиплись або зникли
+            self.misses += 1
+            return
+        if self.pos.known and (_digit_slip(x, self.pos.x) or _digit_slip(y, self.pos.y)):
+            # OCR загубив або додав цифру («581» -> «58», «669» -> «6693»): персонаж так не
+            # телепортується, це збій читання. Такий стрибок не рахуємо навіть як кандидата
+            # в телепорт — інакше стабільна хибна цифра за кілька читань «ставала» правдою
+            # і запускала політ додому з ніякого місця.
             self.misses += 1
             return
         if cfg.max_jump and not self.pos.known:

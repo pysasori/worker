@@ -83,6 +83,18 @@ def test_absurd_jump_is_treated_as_a_misread(panel_frame, monkeypatch):
     assert (shared[SHARED_POS].x, shared[SHARED_POS].y) == (242, 564)
 
 
+def test_dropped_digit_is_never_accepted_even_if_repeated(panel_frame, monkeypatch):
+    """«371, 581» прочиталось як «371, 58» кілька разів поспіль — це збій OCR, а не телепорт."""
+    answers = [[371, 581], [371, 581]] + [[371, 58]] * 10 + [[372, 580]]
+    monkeypatch.setattr("app.pipelines.position.read_numbers", lambda *a, **k: answers.pop(0))
+    pipe, shared = PositionPipeline(PositionConfig(read_every=0, forget_after=99, teleport_reads=3)), {}
+    for i in range(12):
+        pipe.process(ctx_for(panel_frame, i, shared))
+    assert (shared[SHARED_POS].x, shared[SHARED_POS].y) == (371, 581)
+    pipe.process(ctx_for(panel_frame, 12, shared))
+    assert (shared[SHARED_POS].x, shared[SHARED_POS].y) == (372, 580)
+
+
 def test_distance_between_points():
     assert Position(x=100, y=100, known=True).distance_to(Position(x=103, y=104, known=True)) == 5
 
