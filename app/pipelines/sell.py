@@ -58,6 +58,9 @@ class SellConfig(PipelineConfig):
     close_key: str = Field(default="esc", title="Клавіша закриття")
 
     step_timeout: float = Field(default=9.0, gt=0, title="Чекати вікно, с", json_schema_extra={"tech": True})
+    max_total: float = Field(default=90.0, gt=0, title="Найдовший продаж, с", json_schema_extra={"tech": True},
+                             description="стеля на весь цикл: що б не сталось, вікна закриються, "
+                                         "а бот повернеться до бою")
     hover_delay: float = Field(default=0.3, ge=0, title="Наведення перед дією, с",
                                json_schema_extra={"tech": True})
     step_delay: float = Field(default=0.6, ge=0, title="Пауза після дії, с", json_schema_extra={"tech": True})
@@ -145,6 +148,7 @@ class SellPipeline(Pipeline):
     def reset(self) -> None:
         self.state = SellState.IDLE
         self.deadline = 0.0
+        self.started = 0.0
         self.last_sell: float | None = None
         self.queue: list[str] = []          # комірки, які ще не переклали
         self.lots = 0                       # скільки вже поклали в лоти
@@ -182,6 +186,18 @@ class SellPipeline(Pipeline):
     # ---- цикл ---------------------------------------------------------------------
     def process(self, ctx: PipelineContext) -> PipelineResult:
         cfg: SellConfig = self.config
+        if self.state not in (SellState.IDLE, SellState.CLOSING) and ctx.now - self.started > cfg.max_total:
+            return self._give_up(ctx, ctx.frame.image, f"забагато часу ({self.state.name})")
+        result = self._step(ctx)
+        if result.actions and self.state is not SellState.IDLE:
+            # дія блокує тік (наведення, перетягування, пауза), а таймер крок відлічує від
+            # кадру, зробленого ДО неї: на повільній машині 9 с з'їдали самі перетягування
+            self.deadline += sum(getattr(a, "hover_delay", 0.0) + getattr(a, "delay_after", 0.0)
+                                 + (1.0 if isinstance(a, DragTo) else 0.0) for a in result.actions)
+        return result
+
+    def _step(self, ctx: PipelineContext) -> PipelineResult:
+        cfg: SellConfig = self.config
         frame = ctx.frame.image
 
         if self.state is SellState.IDLE:
@@ -189,7 +205,7 @@ class SellPipeline(Pipeline):
         if self.state is SellState.CLOSING:
             return self._closing(ctx, frame)
         if ctx.now > self.deadline:
-            return self._give_up(ctx, frame, "не дочекався вікна")
+            return self._give_up(ctx, frame, f"не дочекався вікна ({self.state.name})")
 
         if self.state is SellState.OPENING_BAG:
             if find_template(frame, cfg.bag_title) is not None:
@@ -228,6 +244,7 @@ class SellPipeline(Pipeline):
         set_busy(ctx.shared, BUSY, True)
         self.queue = list(cfg.cells)
         self.lots = 0
+        self.started = ctx.now
         self.deadline = ctx.now + cfg.step_timeout
         events = [f"час продавати лут ({len(self.queue)} комірок)"]
         if find_template(frame, cfg.bag_title) is not None:

@@ -87,6 +87,11 @@ class ReturnHomeConfig(PipelineConfig):
                                    description="0 = не стежити. Рятує, коли персонаж стоїть там, звідки "
                                                "не дістати мобів: автопуть саджав його на дерево, і бот "
                                                "чотири години нікого не бачив")
+    fight_after_fails: int = Field(default=2, ge=0, title="Фармити без дому, після N невдалих повернень",
+                                   description="0 = ніколи. Якщо до «дому» N разів не вдалось дійти "
+                                               "(«Список» не відкрився, точку не знайдено), бот не "
+                                               "стоїть, а б'є мобів де є; нову спробу повернутись "
+                                               "робить після паузи")
     verify_reads: int = Field(default=2, ge=1, title="Звірок координат після прибуття",
                               description="дійшли — тільки коли координати це підтвердили, і аж тоді в бій")
     verify_timeout: float = Field(default=20.0, gt=0, title="Чекати підтвердження, с")
@@ -121,7 +126,7 @@ class ReturnHomeConfig(PipelineConfig):
                          json_schema_extra={"tech": True})
     text_threshold: int = Field(default=140, ge=0, le=255, title="Поріг яскравості тексту",
                                 json_schema_extra={"tech": True})
-    min_ratio: float = Field(default=0.5, gt=0, le=1, title="Схожість назви точки",
+    min_ratio: float = Field(default=0.35, gt=0, le=1, title="Схожість назви точки",
                              json_schema_extra={"tech": True},
                              description="на одній машині «фарм» стабільно читалось як «форм» "
                                          "(а↔о, згладжування шрифту інше) зі збігом 0.75 — на межі "
@@ -180,6 +185,7 @@ class ReturnHomePipeline(Pipeline):
         self.flying_trip = False      # цю дорогу долаємо в повітрі
         self.verified = 0
         self.closed_at = 0.0
+        self.fails = 0                 # невдалих повернень поспіль
         self.combat_unlocked = False   # на старті спершу підтверджуємо місце фарму
 
     # ---- дані -----------------------------------------------------------------
@@ -287,6 +293,12 @@ class ReturnHomePipeline(Pipeline):
         why = (f"висота {off:+.0f} від потрібної {cfg.farm_altitude}" if self.for_height
                else f"далеко від місця ({away:.0f})")
         if ctx.now < self.retry_at:
+            if cfg.fight_after_fails and self.fails >= cfg.fight_after_fails and off is None:
+                # дім не дається, але стояти нема сенсу: б'ємо, що поруч (до нової спроби)
+                self.combat_unlocked = True
+                set_combat_ready(ctx.shared, True)
+                return PipelineResult.idle(f"!! дім не знайти ({why}) · фармлю де є, "
+                                           f"нова спроба через {self.retry_at - ctx.now:.0f}с")
             return PipelineResult.idle(f"{why} · нова спроба через {self.retry_at - ctx.now:.0f}с")
         if cfg.only_out_of_combat:
             target = read_target(ctx.shared)
@@ -506,6 +518,7 @@ class ReturnHomePipeline(Pipeline):
                               events=[f"стою {standing:.0f}с на {pos} — пробую ще раз"])
 
     def _arrived(self, ctx: PipelineContext, why: str) -> PipelineResult:
+        self.fails = 0
         self.state = ReturnState.CLOSING
         self.deadline = ctx.now + self.config.step_timeout
         self.next_close_at = ctx.now
@@ -571,6 +584,7 @@ class ReturnHomePipeline(Pipeline):
 
     def _fail(self, ctx: PipelineContext, why: str) -> PipelineResult:
         cfg: ReturnHomeConfig = self.config
+        self.fails += 1
         self.retry_at = ctx.now + cfg.cooldown
         if self._list_title(ctx) is not None:                # не лишаємо вікно відкритим
             self.state = ReturnState.CLOSING

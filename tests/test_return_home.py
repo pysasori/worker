@@ -493,3 +493,27 @@ def test_flight_trip_remembers_that_we_are_mounted(list_open, list_closed):
     step(pipe, list_open, 1, shared, far)
     step(pipe, list_open, 1.5, shared, far)
     assert is_mounted(shared) is True, "злетіли — отже верхи"
+
+
+# ---- дім не знайшовся: не стоїмо вічно ---------------------------------------------
+def test_fights_anyway_after_repeated_failures_and_keeps_home():
+    blank = Image.new("RGB", (1440, 1080))               # ні кнопки, ні «Списку»: повернення не вдається
+    pipe, shared = ReturnHomePipeline(cfg(cooldown=50.0, fight_after_fails=2)), {}
+    near = Position(x=241 + 25, y=563, known=True)       # 25 від «дому»
+    step(pipe, blank, 0, shared, near)                    # невдача №1
+    assert not combat_ready(shared)
+    pipe.retry_at = 0
+    step(pipe, blank, 1, shared, near)                    # невдача №2
+    res = step(pipe, blank, 2, shared, near)              # пауза до нової спроби
+    assert combat_ready(shared), "після двох невдач бот фармить, а не стоїть"
+    assert "фармлю де є" in res.status
+    assert pipe.learned_home is None, "дім НЕ переносимо"
+
+
+def test_keeps_standing_before_enough_failures():
+    blank = Image.new("RGB", (1440, 1080))
+    pipe, shared = ReturnHomePipeline(cfg(cooldown=50.0, fight_after_fails=3)), {}
+    near = Position(x=241 + 25, y=563, known=True)
+    step(pipe, blank, 0, shared, near)
+    step(pipe, blank, 1, shared, near)
+    assert not combat_ready(shared)
