@@ -22,6 +22,14 @@ class PetFeedConfig(PipelineConfig):
     feed_below: float = Field(default=0.5, gt=0, le=1, title="Годувати нижче",
                               description="0.5 = половина смужки")
     cooldown: float = Field(default=40.0, ge=0, title="Кулдаун корму, с")
+    urgent_below: float = Field(default=0.25, gt=0, le=1, title="Дуже голодний нижче",
+                                description="щойно прикликаний пет зазвичай на нулі: з кулдауном 40 с "
+                                            "його годувати до норми довелось би чверть години")
+    urgent_cooldown: float = Field(default=6.0, ge=0, title="Кулдаун корму для голодного, с")
+    retry_after: float = Field(default=120.0, ge=0, title="Після «корм не діє» пробувати знову, с",
+                               description="0 = не пробувати. Здаватись назавжди не можна: пет голодав, "
+                                           "поки ситість повільно спадала, а нова спроба так і не "
+                                           "наставала (ріст не з'являвся)")
     give_up_after: int = Field(default=8, ge=0, title="Спроб без ефекту",
                                description="0 = не здаватись. Одна порція додає менше відсотка, "
                                            "тому рахуємо ріст від початку серії, а не між сусідніми")
@@ -45,11 +53,14 @@ class PetFeedPipeline(Pipeline):
         self.tries = 0                   # годувань у поточній серії
         self.level_at_start = -1         # рівень смужки на початку серії
         self.gave_up = False
+        self.gave_up_at = float("-inf")
 
     def process(self, ctx: PipelineContext) -> PipelineResult:
         cfg: PetFeedConfig = self.config
         frame = ctx.shared.get(SHARED_PET_FRAME)
         if frame is None:
+            # пета нема (загинув, відкликаний): наступний буде новий, зі свіжою серією спроб
+            self.tries, self.level_at_start, self.gave_up = 0, -1, False
             ctx.shared[SHARED_PET_FOOD] = BarReading(present=False)
             return PipelineResult.idle("рамки пета нема")
         filled, total = read_bar(ctx.frame.image, frame, frame.food_row, gold=True)
@@ -72,9 +83,12 @@ class PetFeedPipeline(Pipeline):
             # (ситість коливається 49-50%) рахував вдалі годування як марні й «здавався»
             self.tries, self.level_at_start, self.gave_up = 0, -1, False
             return PipelineResult.idle(status)
+        if self.gave_up and cfg.retry_after and ctx.now - self.gave_up_at >= cfg.retry_after:
+            self.gave_up, self.tries, self.level_at_start = False, 0, -1     # нова серія спроб
         if self.gave_up:
             return PipelineResult.idle(f"{status} · корм не діє")
-        if ctx.now - self.last_feed < cfg.cooldown:
+        cooldown = cfg.urgent_cooldown if reading.ratio < cfg.urgent_below else cfg.cooldown
+        if ctx.now - self.last_feed < cooldown:
             return PipelineResult.idle(f"{status} · кулдаун")
 
         self.last_feed = ctx.now
@@ -84,7 +98,7 @@ class PetFeedPipeline(Pipeline):
         events = [f"ситість {reading.percent}% < {cfg.feed_below:.0%} -> {cfg.feed_key}"]
         if cfg.give_up_after and self.tries >= cfg.give_up_after:
             # інакше бот усю ніч тиснув би клавішу, на яку гра не реагує
-            self.gave_up = True
+            self.gave_up, self.gave_up_at = True, ctx.now
             events.append(f"!! {cfg.feed_key} не піднімає ситість за {cfg.give_up_after} спроб "
                           f"— перевір, що на цій клавіші корм")
         return PipelineResult(actions=[PressKey(cfg.feed_key, reason="корм")],

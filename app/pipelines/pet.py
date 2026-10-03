@@ -13,10 +13,13 @@ from app.vision.schemas import BarReading
 
 
 class PetHealConfig(PipelineConfig):
-    search: Region = Field(default=Region.of(0, 120, 150, 320), title="Де шукати рамку пета",
+    search: Region = Field(default=Region.of(0, 88, 150, 352), title="Де шукати рамку пета",
                            json_schema_extra={"tech": True},
                            description="вузька смуга зліва: рамку можна тягати вгору-вниз, а праворуч "
-                                       "починаються смужки івенту, схожі на рамку пета")
+                                       "починаються смужки івенту, схожі на рамку пета. Верх на 88: "
+                                       "рамка пета в Karasu стоїть на y=120 — рівно на старому краї "
+                                       "смуги, і зсув на пару пікселів губив її. Рамку персонажа "
+                                       "відсіює синя мана")
     frame: PetFrameConfig = Field(default_factory=PetFrameConfig, title="Пошук рамки пета",
                                   json_schema_extra={"tech": True})
     forget_after: int = Field(default=2, ge=1, title="Забути рамку після N невдач",
@@ -30,6 +33,11 @@ class PetHealConfig(PipelineConfig):
     heal_below: float = Field(default=0.5, gt=0, le=1, title="Лікувати нижче HP",
                               description="0.5 = половина смужки")
     cooldown: float = Field(default=3.0, ge=0, title="Пауза між лікуваннями, с")
+    give_up_after: int = Field(default=10, ge=0, title="Лікувань без ефекту",
+                               description="0 = не здаватись. Якщо HP піта не росте після N натискань, "
+                                           "клавіша не лікує (нема ресурсу, пета нема): робимо паузу, "
+                                           "а не тиснемо її щотри секунди годинами")
+    retry_after: float = Field(default=120.0, ge=0, title="Після паузи пробувати знову, с")
 
 
 @register
@@ -50,6 +58,9 @@ class PetHealPipeline(Pipeline):
         self.located_at = float("-inf")
         self.hp_total = 0               # найдовша бачена смужка = 100% HP
         self.misses = 0                 # скільки разів поспіль рамку не знайшли
+        self.heal_tries = 0             # натискань у поточній серії
+        self.heal_from = -1             # HP піта (px) на початку серії
+        self.paused_until = float("-inf")
 
     def process(self, ctx: PipelineContext) -> PipelineResult:
         cfg: PetHealConfig = self.config
@@ -90,8 +101,22 @@ class PetHealPipeline(Pipeline):
             return PipelineResult.idle("піта нема")
         status = f"піт {reading.percent}%"
         # ratio == 0 при живій рамці means піт при смерті або смужка порожня — лікувати нічим
+        if reading.ratio >= cfg.heal_below or reading.filled > self.heal_from >= 0:
+            self.heal_tries, self.heal_from = 0, -1            # лікування діє або не потрібне
+        if ctx.now < self.paused_until:
+            return PipelineResult.idle(f"{status} · лікування не діє")
         if 0 < reading.ratio < cfg.heal_below and ctx.now - self.last_heal >= cfg.cooldown:
             self.last_heal = ctx.now
+            if self.heal_from < 0:
+                self.heal_from = reading.filled
+            self.heal_tries += 1
+            if cfg.give_up_after and self.heal_tries > cfg.give_up_after:
+                self.paused_until = ctx.now + cfg.retry_after
+                self.heal_tries, self.heal_from = 0, -1
+                return PipelineResult(
+                    status=f"{status} · лікування не діє",
+                    events=[f"!! {cfg.heal_key} не піднімає HP піта за {cfg.give_up_after} спроб — "
+                            f"пауза {cfg.retry_after:.0f}с (перевір клавішу й ресурс)"])
             return PipelineResult(
                 actions=[PressKey(cfg.heal_key, reason="лік піта")],
                 status=status,

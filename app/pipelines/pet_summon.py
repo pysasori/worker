@@ -40,7 +40,7 @@ class PetSummonConfig(PipelineConfig):
     cooldown: float = Field(default=8.0, ge=0, title="Пауза між спробами, с")
     confirm_frames: int = Field(default=4, ge=1, title="Кадрів без пета",
                                 description="щоб не смикатись, коли рамка блимнула")
-    missing_for: float = Field(default=5.0, ge=0, title="Секунд без пета",
+    missing_for: float = Field(default=10.0, ge=0, title="Секунд без пета",
                                description="клавіша приклику в грі — ПЕРЕМИКАЧ: якщо пет живий, "
                                            "вона його відкликає. Тому тиснемо лише коли рамки "
                                            "нема довго, а не пів секунди")

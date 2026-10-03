@@ -304,3 +304,17 @@ def test_wiring_keeps_combat_at_the_end(search_cfg, attack_cfg):
 def test_wiring_rejects_consumer_without_provider(attack_cfg):
     with pytest.raises(ConfigError, match="target"):
         order_pipelines([AttackPipeline(attack_cfg)], window="test")
+
+
+def test_pet_heal_pauses_when_the_key_does_nothing(real_frame):
+    """HP піта стоїть на місці після багатьох натискань: не тиснемо клавішу щотри секунди годинами."""
+    from app.pipelines.pet import PetHealConfig
+    from tests.conftest import set_pet_hp
+
+    hurt = set_pet_hp(real_frame, 0.24)
+    pipe = PetHealPipeline(PetHealConfig(cooldown=1.0, give_up_after=3, retry_after=60))
+    presses = 0
+    for ts in range(0, 30, 2):
+        presses += len(keys_of(pipe.process(ctx_for(hurt, float(ts)))))
+    assert presses == 3, "після трьох марних натискань пауза"
+    assert keys_of(pipe.process(ctx_for(hurt, 100.0))) != [], "після паузи пробуємо знову"

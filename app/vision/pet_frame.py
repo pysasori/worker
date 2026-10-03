@@ -241,6 +241,11 @@ def find_pet_frame(image: Image.Image, cfg: PetFrameConfig | None = None,
                                       [empty, gold, purple, red, bright], blue, gold, purple)
                     if below is not None:
                         exact = _bar_end(image, x, y, cfg)
+                        if exact is not None and exact < cfg.min_width:
+                            # справжня смужка пета ~82 px; коротший «край» — це обрізок чужих
+                            # смужок (івент-бос поруч), і «ситість 2% (1/42px)» годувала б повітря
+                            x = row.find(255, x + max(1, red_len))
+                            continue
                         return PetFrame(x0=x + off_x, width=exact or width, hp_row=y + off_y,
                                         food_row=below[0] + off_y, purple_row=below[1] + off_y,
                                         exact=exact is not None)

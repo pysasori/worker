@@ -75,7 +75,7 @@ def test_quiet_when_full(real_frame, feed_cfg):
 
 
 def test_respects_cooldown(real_frame, feed_cfg):
-    hungry = with_food(real_frame, 0.1, feed_cfg)
+    hungry = with_food(real_frame, 0.35, feed_cfg)
     pipe = PetFeedPipeline(feed_cfg)
     assert keys(pipe.process(ctx_for(hungry, 0.0))) == [feed_cfg.feed_key]
     assert keys(pipe.process(ctx_for(hungry, feed_cfg.cooldown - 1))) == []
@@ -145,3 +145,45 @@ def test_feeding_up_to_the_threshold_is_a_success(real_frame, feed_cfg):
         pipe.process(ctx_for(full, t))                    # доїв до порога
         t += feed_cfg.cooldown + 1
     assert not pipe.gave_up, "годування працює, здаватись немає причини"
+
+
+def test_feeding_resumes_after_giving_up(real_frame, feed_cfg):
+    """«Корм не діє» — не назавжди: пет голодував, бо нова серія спроб так і не наставала."""
+    from app.pipelines.pet_feed import PetFeedConfig
+
+    pipe = PetFeedPipeline(PetFeedConfig(cooldown=1, give_up_after=2, retry_after=30))
+    hungry = with_food(real_frame, 0.3)
+    shared = ctx_for(hungry, 0).shared
+    for ts in (0, 2, 4):
+        pipe.process(PipelineContext(window="t", frame=Frame(image=hungry, ts=ts), shared=shared))
+    assert pipe.gave_up
+    res = pipe.process(PipelineContext(window="t", frame=Frame(image=hungry, ts=10), shared=shared))
+    assert keys(res) == [], "поки пауза — не тиснемо"
+    res = pipe.process(PipelineContext(window="t", frame=Frame(image=hungry, ts=40), shared=shared))
+    assert keys(res), "після паузи — нова серія спроб"
+
+
+def test_very_hungry_pet_is_fed_often(real_frame):
+    from app.pipelines.pet_feed import PetFeedConfig
+
+    pipe = PetFeedPipeline(PetFeedConfig(cooldown=40, urgent_cooldown=6, give_up_after=0))
+    starving = with_food(real_frame, 0.0)
+    shared = ctx_for(starving, 0).shared
+    pressed = [bool(keys(pipe.process(PipelineContext(window="t", frame=Frame(image=starving, ts=ts),
+                                                       shared=shared)))) for ts in (0, 3, 7, 14)]
+    assert pressed == [True, False, True, True], "на нулі — кожні ~6 с, а не раз на 40"
+
+
+def test_new_pet_starts_a_fresh_series(real_frame):
+    from app.pipelines.pet_feed import PetFeedConfig
+    from app.pipelines.shared import SHARED_PET_FRAME
+
+    pipe = PetFeedPipeline(PetFeedConfig(cooldown=1, give_up_after=1, retry_after=0))
+    hungry = with_food(real_frame, 0.3)
+    shared = ctx_for(hungry, 0).shared
+    for ts in (0, 2):
+        pipe.process(PipelineContext(window="t", frame=Frame(image=hungry, ts=ts), shared=shared))
+    assert pipe.gave_up
+    shared[SHARED_PET_FRAME] = None                         # пет зник
+    pipe.process(PipelineContext(window="t", frame=Frame(image=hungry, ts=3), shared=shared))
+    assert not pipe.gave_up, "новий пет — нова серія, а не вічне «корм не діє»"
