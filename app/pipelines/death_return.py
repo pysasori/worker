@@ -70,6 +70,11 @@ class DeathReturnConfig(PipelineConfig):
                           description="0 = не чекати висоти. Клавішами з фону висота не змінюється — "
                                       "висоту задає «Висота польоту»", json_schema_extra={"tech": True})
     climb_timeout: float = Field(default=25.0, ge=0, title="Чекати висоту не довше, с")
+    revive_key: str = Field(default="f5", title="Клавіша після воскресіння",
+                            description="тиснеться один раз, коли місто завантажилось (наприклад, "
+                                        "бафф або вміння, що злітає зі смертю). Порожньо = нічого")
+    revive_wait: float = Field(default=7.0, ge=0, title="Пауза після цієї клавіші, с",
+                               description="скільки чекати після неї, перш ніж злітати й іти на фарм")
     after_respawn: float = Field(default=12.0, ge=0, title="Пауза на завантаження міста, с")
     takeoff_delay: float = Field(default=3.0, ge=0, title="Пауза після зльоту, с")
     arrive_distance: float = Field(default=6.0, ge=0, title="Прилетіли, якщо ближче ніж")
@@ -149,6 +154,8 @@ class DeathReturnPipeline(Pipeline):
         self.moved_at = 0.0
         self.flying = False
         self.deaths = 0
+        self.revive_pressed = False
+        self.revive_until = 0.0
         self.probe = Probe()
         self.last_check = float("-inf")
         self.hp_zero_since: float | None = None
@@ -263,6 +270,7 @@ class DeathReturnPipeline(Pipeline):
         if button is None:
             return PipelineResult.idle("персонаж загинув · не бачу «Ближний город»")
         self.deaths += 1
+        self.revive_pressed = False
         shot = self._snapshot(ctx, "death")
         set_mounted(ctx.shared, False)               # гра сама знімає зі звіра
         self.state = DeathState.RESPAWN
@@ -293,6 +301,14 @@ class DeathReturnPipeline(Pipeline):
         fresh = pos is not None and pos.known and pos.at > self.respawned_at
         if ctx.now < self.wait_until:
             return PipelineResult.idle("смерть: місто вантажиться")
+        if cfg.revive_key and not self.revive_pressed:
+            self.revive_pressed = True
+            self.revive_until = ctx.now + cfg.revive_wait
+            return PipelineResult(actions=[self._press(cfg.revive_key, "після воскресіння")],
+                                  status="воскрес: тисну клавішу",
+                                  events=[f"воскрес, тисну {cfg.revive_key}"])
+        if ctx.now < self.revive_until:
+            return PipelineResult.idle(f"воскрес: чекаю після {cfg.revive_key} ({self.revive_until - ctx.now:.0f}с)")
         if not fresh:
             if ctx.now < self.wait_until + cfg.fresh_pos_timeout:
                 return PipelineResult.idle("смерть: чекаю координати в місті")

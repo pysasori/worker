@@ -27,7 +27,8 @@ def live(name: str) -> Image.Image:
 
 def cfg(**kw) -> DeathReturnConfig:
     return DeathReturnConfig(**{"after_respawn": 5.0, "takeoff_delay": 2.0, "check_every": 0,
-                                "stuck_after": 10.0, "flight_height": 0, "land_wait": 3.0, **kw})
+                                "stuck_after": 10.0, "flight_height": 0, "land_wait": 3.0,
+                                "revive_key": "", **kw})
 
 
 def step(pipe, name, ts, shared, pos=CITY):
@@ -296,3 +297,19 @@ def test_death_is_still_found_fast_when_hp_drops_to_zero():
         if clicks(res):
             break
     assert clicks(res), "після нуля HP вікно смерті шукаємо щопівсекунди й воскресаємо"
+
+
+def test_presses_the_revive_key_once_after_loading():
+    pipe, shared = DeathReturnPipeline(cfg(revive_key="f5", revive_wait=7.0, use_flight=True)), {}
+    die(pipe, shared)
+    step(pipe, DEAD, 1.0, shared)                      # клік «Ближний город»
+    step(pipe, LIST_CLOSED, 2.0, shared)               # вікно смерті зникло: місто вантажиться
+    assert pipe.state is DeathState.LOADING
+    assert keys(step(pipe, LIST_CLOSED, 3.0, shared)) == [], "поки вантажиться — мовчимо"
+    res = step(pipe, LIST_CLOSED, 8.0, shared)
+    assert keys(res) == ["f5"], "місто завантажилось — тисне F5"
+    again = [keys(step(pipe, LIST_CLOSED, t, shared)) for t in (8.5, 9.0)]
+    assert "f5" not in sum(again, []), "F5 лише один раз за смерть"
+    assert pipe.state is DeathState.LOADING, "після F5 чекаємо 7 с, не злітаємо одразу"
+    res = step(pipe, LIST_CLOSED, 15.5, shared)
+    assert keys(res) == ["9"] and pipe.state is DeathState.TAKEOFF, "7 с минуло — злітаємо"

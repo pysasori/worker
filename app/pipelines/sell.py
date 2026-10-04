@@ -106,6 +106,11 @@ class SellConfig(PipelineConfig):
     cell_step: Point = Field(default=Point(x=33, y=34), title="Крок комірок, px",
                              json_schema_extra={"tech": True})
     cell_size: int = Field(default=26, gt=4, title="Сторона комірки, px", json_schema_extra={"tech": True})
+    protected: list[TemplateSpec] = Field(
+        default_factory=lambda: [TemplateSpec(name="protect_book.png", threshold=0.75)],
+        title="Предмети, які не продавати", json_schema_extra={"tech": True},
+        description="знімки іконок (assets/templates). Комірка, що збіглась із будь-яким, "
+                    "пропускається: так жовта книжка з лавки Karasu не йде в лоти")
     empty_cell: TemplateSpec = Field(
         default_factory=lambda: TemplateSpec(name="bag_empty_cell.png", threshold=0.7),
         title="Знімок порожньої комірки", json_schema_extra={"tech": True},
@@ -176,6 +181,16 @@ class SellPipeline(Pipeline):
         half = cfg.cell_size // 2 + 4                 # трохи запасу під пошук зразка
         crop = frame.crop((point.x - half, point.y - half, point.x + half, point.y + half))
         return match(crop, cfg.empty_cell)[0] is None
+
+    def _is_protected(self, frame, point: Point) -> str | None:
+        """Назва знімка, якщо в комірці предмет із списку «не продавати»."""
+        cfg: SellConfig = self.config
+        half = cfg.cell_size // 2 + 4
+        crop = frame.crop((point.x - half, point.y - half, point.x + half, point.y + half))
+        for spec in cfg.protected:
+            if match(crop, spec)[0] is not None:
+                return spec.name
+        return None
 
     def _lot_point(self, panel: Point, index: int) -> Point:
         cfg: SellConfig = self.config
@@ -351,6 +366,10 @@ class SellPipeline(Pipeline):
             return PipelineResult.idle(f"продаж: пропускаю комірку «{cell}»")
         if not self._has_item(frame, src):
             return PipelineResult.idle(f"продаж: комірка {cell} порожня")
+        keep = self._is_protected(frame, src)
+        if keep:
+            return PipelineResult(status=f"продаж: комірка {cell} — не продаю",
+                                  events=[f"комірка {cell}: це «{keep}», не продаю"])
         dst = self._lot_point(shop, self.lots)
         self.lots += 1
         self.deadline = ctx.now + cfg.step_timeout

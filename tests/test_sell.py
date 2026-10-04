@@ -358,3 +358,22 @@ def test_bag_left_alone_is_closed_by_its_own_key():
     bag_only = live("frame_1440_bag_only.png")
     assert find_template(bag_only, SellConfig().shop_title) is None, "на кадрі лише рюкзак"
     assert keys(pipe.process(ctx(bag_only, 33.0, shared))) == ["b"]
+
+
+def test_protected_item_is_recognised_and_other_cells_are_not():
+    """Жовта книжка з лавки Karasu не має йти в лоти, а решта предметів — так."""
+    from PIL import Image
+
+    from app.core.geometry import Point
+    from app.pipelines.sell import SellConfig, SellPipeline
+    from app.vision.template import TEMPLATES
+
+    pipe = SellPipeline(SellConfig())
+    frame = Image.new("RGB", (400, 300), (20, 24, 30))
+    book = Image.open(TEMPLATES / "protect_book.png").convert("RGB")
+    frame.paste(book, (100 - book.width // 2, 100 - book.height // 2))
+    assert pipe._is_protected(frame, Point(x=100, y=100)) == "protect_book.png"
+    assert pipe._is_protected(frame, Point(x=300, y=200)) is None, "порожнє місце — не книжка"
+    other = Image.effect_noise((22, 22), 80).convert("RGB")
+    frame.paste(other, (300 - 11, 200 - 11))
+    assert pipe._is_protected(frame, Point(x=300, y=200)) is None, "інший предмет — не книжка"
