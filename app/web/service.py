@@ -55,6 +55,8 @@ class BotService:
         self._status_thread: threading.Thread | None = None
         self._ticks: dict[str, tuple[int, float]] = {}      # останній тік сесії й коли він змінився
         self._autostarted = False
+        self._boot_at = time.time()          # коли піднялась програма (для запасного автостарту)
+        self._fallback_done = False
 
     # ---- сканер вікон --------------------------------------------------------
     def start_scanner(self) -> None:
@@ -233,12 +235,31 @@ class BotService:
     def _maybe_autostart(self) -> None:
         """Автостарт: один раз, після першого скану, якщо бота не зупинено рукою."""
         with self._lock:
+            self._fallback_autostart()
             if self._autostarted or not self.config.settings.autostart:
                 return
             self._autostarted = True
             if not self.is_running() and not self.stopped_by_user:
                 self.log.info("автостарт: запускаю бота")
                 self.start()
+
+    def _fallback_autostart(self) -> None:
+        """
+        Запасний автостарт: програма щойно піднялась, минуло autostart_after секунд, а бот
+        так ніхто й не запустив — стартуємо самі. Один раз; зупинку рукою поважаємо.
+        Якщо запускати поки нікого (вікон ще нема), чекаємо наступного скану.
+        """
+        after = self.config.settings.autostart_after
+        if self._fallback_done or not after or time.time() - self._boot_at < after:
+            return
+        if self.is_running() or self.stopped_by_user:
+            self._fallback_done = True
+            return
+        if not self._desired():
+            return
+        self._fallback_done = True
+        self.log.info("через %.0fс після старту бот не працює — запускаю сам", after)
+        self.start()
 
     def _adopt(self, found: list[FoundWindow]) -> bool:
         """Внести в конфіг нових персонажів. True, якщо конфіг змінився."""

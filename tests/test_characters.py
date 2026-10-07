@@ -595,6 +595,83 @@ def test_autostart_is_off_by_default(service):
     assert not service.is_running()
 
 
+def test_fallback_autostart_kicks_in_when_nobody_started_the_bot(service, monkeypatch):
+    import app.runtime.orchestrator as mod
+
+    monkeypatch.setattr(mod, "WindowSession", FakeSession)
+    service.config.migrated_windows = True
+    service.config.characters["A"] = CharacterConfig(profile="фарм", enabled=True)
+    fake_scan(service, {41: ["A"]})
+    service.scan_once()
+    try:
+        service._maybe_autostart()
+        assert not service.is_running(), "щойно піднялись — ще рано"
+        service._boot_at -= 200                              # минуло понад 2 хвилини
+        service._maybe_autostart()
+        assert service.is_running(), "ніхто не запустив — запускаємо самі"
+    finally:
+        service.stop()
+
+
+def test_fallback_autostart_waits_for_windows_that_load_late(service, monkeypatch):
+    """Вікон на 2-й хвилині ще нема, вони догружаються пізніше — стартуємо, щойно з'явились."""
+    import app.runtime.orchestrator as mod
+
+    monkeypatch.setattr(mod, "WindowSession", FakeSession)
+    service.config.migrated_windows = True
+    service.config.characters["A"] = CharacterConfig(profile="фарм", enabled=True)
+    service._boot_at -= 600                                  # давно після старту, а вікон нема
+    fake_scan(service, {})
+    service.scan_once()
+    try:
+        service._maybe_autostart()
+        assert not service.is_running()
+        fake_scan(service, {41: ["A"]})                     # клієнт догрузився, нік прочитано
+        service.scan_once()
+        service._maybe_autostart()
+        assert service.is_running(), "вікно з'явилось — бот піднімається одразу"
+    finally:
+        service.stop()
+
+
+def test_windows_with_the_checkbox_that_load_after_the_global_start_join_later(service, monkeypatch):
+    """Старт «для всіх із галочкою», а ніки інших клієнтів прочитались пізніше — вони підключаються самі."""
+    import app.runtime.orchestrator as mod
+
+    monkeypatch.setattr(mod, "WindowSession", FakeSession)
+    service.config.migrated_windows = True
+    service.config.characters["A"] = CharacterConfig(profile="фарм", enabled=True)
+    service.config.characters["B"] = CharacterConfig(profile="фарм", enabled=True)
+    service.config.characters["C"] = CharacterConfig(profile="фарм", enabled=False)   # без галочки
+    service._boot_at -= 600
+    fake_scan(service, {41: ["A"]})
+    service.scan_once()
+    try:
+        service._maybe_autostart()
+        assert set(service.orchestrator._slots) == {"A"}
+        fake_scan(service, {41: ["A"], 42: ["B"], 43: ["C"]})        # B і C догрузились
+        service.scan_once()
+        assert set(service.orchestrator._slots) == {"A", "B"}, "B із галочкою підключився, C без — ні"
+    finally:
+        service.stop()
+
+
+def test_fallback_autostart_respects_a_manual_stop_and_empty_screen(service, monkeypatch):
+    import app.runtime.orchestrator as mod
+
+    monkeypatch.setattr(mod, "WindowSession", FakeSession)
+    service.config.migrated_windows = True
+    service._boot_at -= 200
+    service._maybe_autostart()
+    assert not service.is_running() and not service._fallback_done, "нема кого запускати — чекаємо вікна"
+    service.config.characters["A"] = CharacterConfig(profile="фарм", enabled=True)
+    fake_scan(service, {41: ["A"]})
+    service.scan_once()
+    service.stopped_by_user = True
+    service._maybe_autostart()
+    assert not service.is_running(), "зупинили рукою — не піднімаємо"
+
+
 # ---- періодичний стан у консоль --------------------------------------------------------
 def test_log_status_once_writes_the_session_line(running):
     """Той самий рядок, що на картці вікна, має піти в лог цього вікна — консоль і /api/log."""
