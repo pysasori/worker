@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
+import time
 import re
 import threading
 from collections import OrderedDict
@@ -22,6 +24,7 @@ from PIL import Image, ImageChops, ImageOps
 from pydantic import BaseModel, Field
 
 from app.core.geometry import Region
+from app.vision.template import TemplateSpec, match
 from app.vision.text import OcrConfig, read_line
 
 _NUM = re.compile(r"\d+")
@@ -32,6 +35,8 @@ _NUM = re.compile(r"\d+")
 # Файл збирає tools/build_digit_glyphs.py.
 GLYPH_FILE = Path(__file__).resolve().parents[2] / "assets" / "digit_glyphs.json"
 _GLYPH_HEIGHT = 10
+_log = logging.getLogger("digits")
+_last_unknown_log = 0.0
 _GLYPHS: dict[str, str] | None = None
 
 
@@ -132,6 +137,20 @@ def _read_group(rows: list[str], table: dict[str, str]) -> str | None:
     return None
 
 
+def _report_unknown(key: str) -> None:
+    """
+    Фігура, якої нема в абетці (інший клієнт, інше згладжування шрифту): раз на хвилину
+    пишемо її в лог малюнком, щоб було що додати в assets/digit_glyphs.json. Читання
+    тим часом піде через tesseract, тож бот не стоїть.
+    """
+    global _last_unknown_log
+    if time.time() - _last_unknown_log < 60:
+        return
+    _last_unknown_log = time.time()
+    _log.warning("!! невідома цифра панелі координат — читаю tesseract-ом. Малюнок:" + chr(10) + "%s",
+                 chr(10).join(key.split("|")))
+
+
 def read_by_glyphs(mask: Image.Image) -> list[int] | None:
     """
     Координати «xxx, yyy» за абеткою цифр. None — якщо якась фігура невідома, коми нема
@@ -147,6 +166,7 @@ def read_by_glyphs(mask: Image.Image) -> list[int] | None:
             continue
         digits = _read_group(g.key.split("|"), table)
         if digits is None:
+            _report_unknown(g.key)
             return None
         parts[-1] += digits
     if len(parts) != 2 or not all(parts):
@@ -172,6 +192,11 @@ class DigitsConfig(BaseModel):
                                        "праворуч інакше читалась як зайва цифра («5493»)")
     color: str = Field(default="white", title="Колір тексту", json_schema_extra={"tech": True},
                        description="white — координати, green — висота")
+    anchor: bool = Field(default=True, title="Прив'язка до значка сонця", json_schema_extra={"tech": True},
+                         description="координати стоять за значком сонця в панелі локації; зону беремо "
+                                     "від нього, а не з фіксованих пікселів. Тоді читання не залежить "
+                                     "від роздільності вікна й від того, під який розмір відкалібровано "
+                                     "профіль. Не знайшли значок — зона з налаштувань")
     pad: int = Field(default=3, ge=0, title="Поля навколо тексту", json_schema_extra={"tech": True})
     scale: int = Field(default=6, ge=2, le=10, title="Збільшення перед читанням",
                        json_schema_extra={"tech": True})
@@ -191,9 +216,28 @@ def _mask(crop: Image.Image, color: str) -> Image.Image:
     return ImageChops.multiply(out, b.point(_gt(195)))
 
 
+# значок сонця: від його центра до лівого верхнього кута зони з цифрами
+_SUN = TemplateSpec(name="coords_sun.png", threshold=0.75)
+_SUN_TO_ZONE = (7, -8)
+
+
+def _zone(image: Image.Image, cfg: DigitsConfig) -> Region:
+    """Де зараз цифри: від значка сонця, а якщо його не видно — з налаштувань."""
+    if not cfg.anchor:
+        return cfg.region
+    area = Region.of(max(0, image.width - 360), 0, min(360, image.width), 90)
+    try:
+        sun, _ = match(image, _SUN.model_copy(update={"area": area}))
+    except Exception:                                  # noqa: BLE001
+        return cfg.region
+    if sun is None:
+        return cfg.region
+    return Region.of(sun.x + _SUN_TO_ZONE[0], sun.y + _SUN_TO_ZONE[1], cfg.region.w, cfg.region.h)
+
+
 def read_numbers(image: Image.Image, cfg: DigitsConfig, ocr: OcrConfig) -> list[int]:
     """Усі числа з зони заданим кольором, зліва направо. Порожньо — якщо не прочиталось."""
-    crop = image.crop(cfg.region.box)
+    crop = image.crop(_zone(image, cfg).box)
     mask = _mask(crop, cfg.color)
     box = mask.getbbox()
     if box is None:
