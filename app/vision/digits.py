@@ -11,9 +11,12 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import threading
 from collections import OrderedDict
+from dataclasses import dataclass
+from pathlib import Path
 
 from PIL import Image, ImageChops, ImageOps
 from pydantic import BaseModel, Field
@@ -22,6 +25,133 @@ from app.core.geometry import Region
 from app.vision.text import OcrConfig, read_line
 
 _NUM = re.compile(r"\d+")
+
+# Абетка цифр панелі: шрифт гри стоїть на місці, тож кожну цифру видно як однакову картинку
+# в кілька пікселів. Її впізнаємо точним порівнянням — tesseract на такому дрібному тексті
+# плутав «586» і «566», губив кому й додавав цифри, через що бот «втікав» від дому.
+# Файл збирає tools/build_digit_glyphs.py.
+GLYPH_FILE = Path(__file__).resolve().parents[2] / "assets" / "digit_glyphs.json"
+_GLYPH_HEIGHT = 10
+_GLYPHS: dict[str, str] | None = None
+
+
+@dataclass(frozen=True)
+class Glyph:
+    key: str          # рядки картинки через «|»
+    kind: str         # "digit" або "comma"
+
+
+def glyphs_of(mask: Image.Image) -> list[Glyph]:
+    """Розбити білу маску на окремі фігури по порожніх стовпцях: цифри й кома."""
+    bb = mask.getbbox()
+    if bb is None:
+        return []
+    px = mask.load()
+    w, h = mask.size
+    top = bb[1]
+    busy = [any(px[x, y] for y in range(h)) for x in range(w)]
+    out: list[Glyph] = []
+    x = 0
+    while x < w:
+        if not busy[x]:
+            x += 1
+            continue
+        start = x
+        while x < w and busy[x]:
+            x += 1
+        rows = ["".join("#" if px[cx, y] else "." for cx in range(start, x))
+                for y in range(top, min(h, top + _GLYPH_HEIGHT + 2))]
+        used = [i for i, r in enumerate(rows) if "#" in r]
+        kind = "comma" if used and used[0] >= 6 else "digit"
+        out.append(Glyph(key="|".join(rows), kind=kind))
+    return out
+
+
+def _glyph_table() -> dict[str, str]:
+    global _GLYPHS
+    if _GLYPHS is None:
+        try:
+            raw = json.loads(GLYPH_FILE.read_text(encoding="utf-8"))
+            _GLYPHS = {k: str(v) for k, v in raw.get("glyphs", {}).items()}
+        except (OSError, ValueError):
+            _GLYPHS = {}
+    return _GLYPHS
+
+
+def _distance(a: str, b: str) -> int:
+    if len(a) != len(b):
+        return 99
+    return sum(1 for x, y in zip(a, b) if x != y)
+
+
+def _classify(key: str, table: dict[str, str]) -> str | None:
+    """Цифра для картинки: точний збіг, інакше єдина найближча (до 2 пікселів різниці)."""
+    hit = table.get(key)
+    if hit is not None:
+        return hit
+    ranked = sorted((_distance(key, k), d) for k, d in table.items())
+    if not ranked or ranked[0][0] > 2:
+        return None
+    best = ranked[0]
+    rival = next((r for r in ranked[1:] if r[1] != best[1]), None)
+    if rival is not None and rival[0] - best[0] < 2:
+        return None                       # дві цифри майже однаково схожі — не вгадуємо
+    return best[1]
+
+
+def _trim(rows: list[str]) -> list[str]:
+    """Прибрати порожні стовпці з країв картинки."""
+    cols = [i for i in range(len(rows[0])) if any(r[i] == "#" for r in rows)]
+    if not cols:
+        return rows
+    return [r[cols[0]:cols[-1] + 1] for r in rows]
+
+
+def _read_group(rows: list[str], table: dict[str, str]) -> str | None:
+    """
+    Цифри однієї фігури. Сусідні цифри інколи торкаються краями («24»), і тоді вони йдуть
+    як одна широка фігура: шукаємо місце розрізу, після якого обидві половини впізнані.
+    """
+    rows = _trim(rows)
+    whole = _classify("|".join(rows), table)
+    if whole is not None:
+        return whole
+    width = len(rows[0])
+    if width < 6:
+        return None
+    for cut in range(2, width - 2):
+        left, right = _trim([r[:cut] for r in rows]), _trim([r[cut:] for r in rows])
+        if not any("#" in r for r in left) or not any("#" in r for r in right):
+            continue
+        a = _classify("|".join(left), table)
+        if a is None:
+            continue
+        b = _read_group(right, table)
+        if b is not None:
+            return a + b
+    return None
+
+
+def read_by_glyphs(mask: Image.Image) -> list[int] | None:
+    """
+    Координати «xxx, yyy» за абеткою цифр. None — якщо якась фігура невідома, коми нема
+    або склад дивний: тоді читає tesseract. Краще «не знаю», ніж хибне число.
+    """
+    table = _glyph_table()
+    if not table:
+        return None
+    parts: list[str] = [""]
+    for g in glyphs_of(mask):
+        if g.kind == "comma":
+            parts.append("")
+            continue
+        digits = _read_group(g.key.split("|"), table)
+        if digits is None:
+            return None
+        parts[-1] += digits
+    if len(parts) != 2 or not all(parts):
+        return None
+    return [int(parts[0]), int(parts[1])]
 
 # Персонаж здебільшого стоїть, і маска цифр щосекунди та сама. Кожне читання — це
 # окремий запуск tesseract.exe (~35 мс процесорного часу й створення процесу), а
@@ -80,7 +210,7 @@ def read_numbers(image: Image.Image, cfg: DigitsConfig, ocr: OcrConfig) -> list[
         if hit is not None:
             _CACHE.move_to_end(key)
             return list(hit)
-    numbers = _vote(base, cfg, ocr)
+    numbers = (read_by_glyphs(mask.crop(box)) if cfg.color == "white" else None) or _vote(base, cfg, ocr)
     if numbers:                       # порожнє = OCR не спрацював; його не запам'ятовуємо
         with _CACHE_LOCK:
             _CACHE[key] = numbers

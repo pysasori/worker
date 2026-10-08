@@ -29,6 +29,7 @@ def fresh_cache():
 
 def count_ocr_calls(monkeypatch, result: str = "241, 563") -> list[int]:
     calls: list[int] = []
+    monkeypatch.setattr(digits, "_GLYPHS", {})      # без абетки цифр: рахуємо саме запуски OCR
 
     def fake(piece, cfg):
         calls.append(1)
@@ -109,3 +110,54 @@ def test_colours_do_not_share_an_entry(monkeypatch, frame):
     read_numbers(frame, DigitsConfig(color="white"), ocr)
     read_numbers(frame, DigitsConfig(color="green"), ocr)
     assert len(calls) == settled, "обидва кольори вже в кеші окремими записами"
+
+
+# ---- абетка цифр: читання без tesseract ---------------------------------------------
+def test_reads_coordinates_by_glyphs_without_tesseract(monkeypatch, frame):
+    """Шрифт панелі стоїть на місці: цифри впізнаються точним порівнянням, tesseract не потрібен."""
+    def boom(*a, **k):
+        raise AssertionError("tesseract не мав запускатись")
+
+    monkeypatch.setattr(digits, "read_line", boom)
+    assert read_numbers(frame, DigitsConfig(), OcrConfig()) == [241, 563]
+
+
+def test_touching_digits_are_split(monkeypatch):
+    """«24» у «486»: цифри торкаються краями й виходять однією широкою фігурою."""
+    from PIL import Image as _I
+
+    from app.vision.digits import GLYPH_FILE, _glyph_table, read_by_glyphs
+
+    table = _glyph_table()
+    rows = {d: k.split("|") for k, d in table.items()}
+    def render(text: str, gap: int = 1) -> _I.Image:
+        chars = text.replace(" ", "")
+        parts = [rows[ch] if ch != "," else ["."] * 8 + ["#"] * 4 for ch in chars]
+        # між цифрами одного числа — gap (0 = впритул), навколо коми завжди порожній стовпець
+        gaps = [gap if ch != "," and (i + 1 < len(chars) and chars[i + 1] != ",") else 1
+                for i, ch in enumerate(chars)]
+        height = max(len(p) for p in parts)
+        img = _I.new("L", (sum(len(p[0]) + g for p, g in zip(parts, gaps)) + 4, height + 4), 0)
+        x = 2
+        for p, g in zip(parts, gaps):
+            for dy, row in enumerate(p):
+                for dx, ch in enumerate(row):
+                    if ch == "#":
+                        img.putpixel((x + dx, 2 + dy), 255)
+            x += len(p[0]) + g
+        return img
+
+    assert read_by_glyphs(render("486,585")) == [486, 585]
+    assert read_by_glyphs(render("486,585", gap=0)) == [486, 585], "цифри впритул — теж розрізаються"
+    assert GLYPH_FILE.exists()
+
+
+def test_unknown_shape_falls_back_to_tesseract(monkeypatch, frame):
+    """Фігура, якої нема в абетці, — не вгадуємо, а віддаємо читання tesseract-у."""
+    from app.vision.digits import read_by_glyphs
+
+    weird = Image.new("L", (30, 14), 0)
+    for x in range(2, 7):
+        for y in range(2, 12):
+            weird.putpixel((x, y), 255)                  # суцільний прямокутник — не цифра
+    assert read_by_glyphs(weird) is None

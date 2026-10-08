@@ -429,11 +429,30 @@ def test_gets_off_the_mount_when_the_pet_will_not_come(summon_cfg):
     кадр верхи й пішки різняться лише самим персонажем. Тому мовчазні невдачі
     приклику і є ознакою: злазимо й пробуємо ще раз.
     """
-    from app.pipelines.shared import is_mounted
+    from app.pipelines.shared import SHARED_ALT, SHARED_GROUND, Altitude, is_mounted
 
-    pipe, shared = PetSummonPipeline(summon_cfg), {}     # стан «верхи» невідомий
+    pipe, shared = PetSummonPipeline(summon_cfg), {}     # стан «верхи» невідомий...
+    shared[SHARED_GROUND] = 22
+    shared[SHARED_ALT] = Altitude(z=75, known=True)       # ...але висота каже: ми в повітрі
     t = fail_until_gave_up(pipe, shared, summon_cfg)
     assert is_mounted(shared) is False, "вважаємо, що злізли"
 
     soon = pressed_while(pipe, shared, start=t + 11.0)
     assert soon == [summon_cfg.summon_key], "після злізання пробуємо скоро, а не через хвилину"
+
+
+def test_does_not_press_the_flight_key_when_it_cannot_tell_it_is_mounted(summon_cfg):
+    """
+    Клавіша польоту — перемикач: натиснута на землі, вона САДИТЬ на літаючого звіра, і druid
+    літав та бився в повітрі. Невідомо, верхи чи ні, і висоти нема — клавішу не чіпаємо.
+    """
+    pipe, shared = PetSummonPipeline(summon_cfg), {}
+    pressed, t = [], 0.0
+    while not pipe.gave_up and t < 600:
+        for i in range(summon_cfg.confirm_frames + 1):
+            pressed += keys(pipe.process(ctx_for(t + i * 0.2, shared, False)))
+        t += summon_cfg.cooldown + summon_cfg.cast_time + 1
+    assert pipe.gave_up
+    pressed += pressed_while(pipe, shared, start=t + 11.0)
+    assert summon_cfg.dismount_key not in pressed, "на землі 9 посадила б на звіра"
+    assert shared.get("mount") is None, "стан «верхи» лишився невідомим"

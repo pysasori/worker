@@ -31,7 +31,7 @@ from app.pipelines.actions import ClickAt, DragTo, PipelineResult, PressKey
 from app.pipelines.base import Pipeline, PipelineConfig, PipelineContext
 from app.pipelines.registry import register
 from app.pipelines.shared import (
-    SHARED_HOME, SHARED_POS, Position, busy_reasons, is_mounted, read_altitude, read_position,
+    SHARED_GROUND, SHARED_HOME, SHARED_POS, Position, busy_reasons, is_mounted, read_altitude, read_position,
     read_target, set_busy, set_combat_ready, set_mounted,
 )
 from app.vision.autopath import AutopathConfig, handle_x_for, read_autopath
@@ -87,6 +87,10 @@ class ReturnHomeConfig(PipelineConfig):
                                    description="0 = не стежити. Рятує, коли персонаж стоїть там, звідки "
                                                "не дістати мобів: автопуть саджав його на дерево, і бот "
                                                "чотири години нікого не бачив")
+    air_above: float = Field(default=25.0, gt=0, title="У повітрі, якщо вище за землю на",
+                             json_schema_extra={"tech": True},
+                             description="коли «верхи» невідомо (перезапуск, збій), але висота явно "
+                                         "вища за землю фарму — вважаємо, що летимо, і сідаємо")
     fight_after_fails: int = Field(default=2, ge=0, title="Фармити без дому, після N невдалих повернень",
                                    description="0 = ніколи. Якщо до «дому» N разів не вдалось дійти "
                                                "(«Список» не відкрився, точку не знайдено), бот не "
@@ -186,6 +190,7 @@ class ReturnHomePipeline(Pipeline):
         self.verified = 0
         self.closed_at = 0.0
         self.fails = 0                 # невдалих повернень поспіль
+        self.pending_land = False      # політ скінчився невдало: треба сісти, а не фармити в повітрі
         self.combat_unlocked = False   # на старті спершу підтверджуємо місце фарму
 
     # ---- дані -----------------------------------------------------------------
@@ -209,12 +214,22 @@ class ReturnHomePipeline(Pipeline):
 
     # ---- цикл -------------------------------------------------------------------
     def process(self, ctx: PipelineContext) -> PipelineResult:
+        cfg: ReturnHomeConfig = self.config
         # Закрито за замовчуванням на кожному кадрі. _idle відкриє бій лише коли
         # координати підтверджені й ми на місці, або коли добиваємо вже початий бій.
         set_combat_ready(ctx.shared, False)
+        ctx.shared[SHARED_GROUND] = self.ground
         pos = read_position(ctx.shared)
         home = self._home(ctx)
         if self.state is ReturnState.IDLE:
+            if self.pending_land:
+                self.pending_land = False
+                if cfg.land_key and is_mounted(ctx.shared):
+                    set_mounted(ctx.shared, False)
+                    self.flying_trip = self.took_off = False
+                    self.land_at = ctx.now
+                    return PipelineResult(actions=[PressKey(cfg.land_key, delay_after=0.4, reason="сісти")],
+                                          status="", events=["політ скінчився невдало — сідаю, а не фармлю в повітрі"])
             landing = self._land(ctx)
             if landing is not None:
                 return landing
@@ -361,16 +376,20 @@ class ReturnHomePipeline(Pipeline):
         pos, home = read_position(ctx.shared), self._home(ctx)
         at_home = (pos is not None and pos.known and home is not None
                    and pos.distance_to(home) <= cfg.arrive_distance)
-        if at_home and not is_mounted(ctx.shared):
+        flying_high = self.ground is not None and alt.z - self.ground > cfg.air_above
+        if at_home and not is_mounted(ctx.shared) and not flying_high:
             self.ground_reads.append(alt.z)          # землю вчимо лише стоячи на ній
             del self.ground_reads[:-cfg.ground_reads]
             self.ground = int(median(self.ground_reads))
         if cfg.farm_altitude or self.ground is None:
             return None
-        if not is_mounted(ctx.shared):
-            self.land_tries = 0
-            return None                  # не верхи — 9 тут не саджає, а садить на звіра
         above = alt.z - self.ground
+        if not is_mounted(ctx.shared):
+            if is_mounted(ctx.shared) is None and above > cfg.air_above:
+                set_mounted(ctx.shared, True)    # «верхи» невідомо, а висота каже: ми в повітрі
+            else:
+                self.land_tries = 0
+                return None              # не верхи — 9 тут не саджає, а садить на звіра
         if above <= cfg.land_above:
             if self.land_tries:
                 set_mounted(ctx.shared, False)       # висота впала — таки сіли
@@ -579,12 +598,16 @@ class ReturnHomePipeline(Pipeline):
         if ctx.now > self.deadline:
             self.state = ReturnState.IDLE
             set_busy(ctx.shared, BUSY, False)
+            if self.flying_trip and self.took_off:
+                self.pending_land = True
             return PipelineResult(events=["!! координати після дороги не звірив — фармлю так"])
         return PipelineResult.idle("повернення: звіряю координати")
 
     def _fail(self, ctx: PipelineContext, why: str) -> PipelineResult:
         cfg: ReturnHomeConfig = self.config
         self.fails += 1
+        if self.flying_trip and self.took_off:
+            self.pending_land = True        # злетіли, але не дійшли: у бій лише на землі
         self.retry_at = ctx.now + cfg.cooldown
         if self._list_title(ctx) is not None:                # не лишаємо вікно відкритим
             self.state = ReturnState.CLOSING

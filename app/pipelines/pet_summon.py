@@ -26,7 +26,7 @@ from app.pipelines.actions import PipelineResult, PressKey
 from app.pipelines.base import Pipeline, PipelineConfig, PipelineContext
 from app.pipelines.registry import register
 from app.pipelines.shared import (
-    SHARED_PET, busy_reasons, is_mounted, read_player, read_target, set_busy, set_mounted,
+    SHARED_PET, altitude_above_ground, busy_reasons, is_mounted, read_player, read_target, set_busy, set_mounted,
 )
 from PIL import Image, ImageChops, ImageStat
 
@@ -70,6 +70,10 @@ class PetSummonConfig(PipelineConfig):
                                           "(«Здесь невозможно призвать питомца»), а на екрані нема "
                                           "жодної позначки, що персонаж верхи — тому мовчазні "
                                           "невдачі приклику це єдина ознака, яку видно")
+    air_above: float = Field(default=15.0, gt=0, title="Верхи, якщо вище за землю на",
+                             json_schema_extra={"tech": True},
+                             description="використовується, коли «верхи» невідомо: польоти йдуть на 55-70, "
+                                         "а горби на фармі дають кілька одиниць")
     move_level: float = Field(default=15.0, gt=0, title="Поріг руху", json_schema_extra={"tech": True},
                               description="зміна картинки за секунду: стоїмо — до 8, ідемо — від 30. "
                                           "Рахується на секунду, щоб не залежати від частоти кадрів")
@@ -156,7 +160,7 @@ class PetSummonPipeline(Pipeline):
             if cfg.give_up_after and self.tries >= cfg.give_up_after:
                 self.gave_up = True
                 self.gave_up_at = ctx.now
-                if cfg.dismount_key and is_mounted(ctx.shared) is not False:
+                if cfg.dismount_key and self._in_the_air(ctx):
                     # верхи пет не кличеться ніколи. Стан «верхи» бот веде сам, бо в грі
                     # його не видно, і після перезапуску він невідомий — тоді ця спроба
                     # і є перевіркою: злізли, а далі приклик або спрацює, або ні
@@ -239,6 +243,21 @@ class PetSummonPipeline(Pipeline):
             actions=[PressKey(cfg.summon_key, reason="приклик пета")],
             status=f"приклик пета ({cfg.cast_time:.0f}с)",
             events=events)
+
+    def _in_the_air(self, ctx: PipelineContext) -> bool:
+        """
+        Чи правда, що персонаж верхи. Клавіша польоту — ПЕРЕМИКАЧ: на землі вона саджає на
+        звіра, і тоді druid літав і бився в повітрі. Тому злазимо лише коли знаємо точно:
+        бот сам посадив верхи, або висота помітно вища за землю. Невідомо — не чіпаємо.
+        """
+        cfg: PetSummonConfig = self.config
+        mounted = is_mounted(ctx.shared)
+        if mounted is True:
+            return True
+        if mounted is False:
+            return False
+        above = altitude_above_ground(ctx.shared)
+        return above is not None and above > cfg.air_above
 
     def _release(self, ctx: PipelineContext) -> None:
         """Зняти паузу, яку тримали заради тиші перед прикликом."""

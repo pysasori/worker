@@ -20,6 +20,7 @@ SHARED_PET_FRAME = "pet_frame"
 SHARED_BUSY = "busy"
 SHARED_POS = "pos"          # координати персонажа з панелі вгорі
 SHARED_ALT = "alt"          # висота (третє число там само)
+SHARED_GROUND = "ground"  # висота землі на місці фарму (int або None), її вчить повернення на місце
 SHARED_HOME = "home"        # місце, куди повертатись (Position або None)
 SHARED_PLAYER = "player"    # HP персонажа (BarReading)
 SHARED_MOUNT = "mount"      # чи сидимо верхи: True/False, None — не знаємо
@@ -84,6 +85,18 @@ def read_position(shared: dict[str, Any]) -> Position | None:
 
 def read_altitude(shared: dict[str, Any]) -> Altitude | None:
     return shared.get(SHARED_ALT)
+
+
+def altitude_above_ground(shared: dict[str, Any]) -> float | None:
+    """
+    На скільки персонаж вище за землю на місці фарму. None — не знаємо (нема висоти або
+    землі). За цим видно, що він у повітрі, коли «верхи» не відомо: клавіша польоту
+    перемикач, і натиснута на землі вона САДИТЬ НА ЗВІРА.
+    """
+    alt, ground = read_altitude(shared), shared.get(SHARED_GROUND)
+    if alt is None or not alt.known or ground is None:
+        return None
+    return alt.z - ground
 
 
 def read_target(shared: dict[str, Any]) -> TargetInfo | None:

@@ -517,3 +517,43 @@ def test_keeps_standing_before_enough_failures():
     step(pipe, blank, 0, shared, near)
     step(pipe, blank, 1, shared, near)
     assert not combat_ready(shared)
+
+
+# ---- політ: не фармити в повітрі ---------------------------------------------------
+def _fly_shared(z: int, ground: int = 22) -> dict:
+    from app.pipelines.shared import SHARED_ALT, Altitude
+
+    return {SHARED_ALT: Altitude(z=z, known=True, at=1.0)}
+
+
+def test_lands_when_it_is_obviously_in_the_air_even_if_the_mount_state_is_unknown(list_closed):
+    from app.pipelines.actions import PressKey
+
+    pipe, shared = ReturnHomePipeline(cfg()), _fly_shared(80)
+    pipe.ground_reads, pipe.ground = [22] * 15, 22
+    res = step(pipe, list_closed, 0, shared, HOME)
+    assert [a.key for a in res.actions if isinstance(a, PressKey)] == ["9"], "висота 80 над землею 22 — сідаємо"
+    assert pipe.ground == 22, "політ не стає «землею»"
+
+
+def test_does_not_press_the_flight_key_on_the_ground_when_the_state_is_unknown(list_closed):
+    from app.pipelines.actions import PressKey
+
+    pipe, shared = ReturnHomePipeline(cfg()), _fly_shared(24)
+    pipe.ground_reads, pipe.ground = [22] * 15, 22
+    res = step(pipe, list_closed, 0, shared, HOME)
+    assert not [a for a in res.actions if isinstance(a, PressKey)], "на землі 9 посадила б на звіра"
+
+
+def test_failed_flying_trip_ends_with_landing_not_with_farming_in_the_air(list_closed):
+    from app.pipelines.actions import PressKey
+    from app.pipelines.shared import set_mounted
+
+    pipe, shared = ReturnHomePipeline(cfg()), {}
+    pipe.flying_trip = pipe.took_off = True
+    set_mounted(shared, True)
+    pipe._fail(PipelineContext(window="t", frame=Frame(image=list_closed, ts=0), shared=shared), "тест")
+    assert pipe.pending_land
+    res = step(pipe, list_closed, 1, shared, HOME)
+    assert [a.key for a in res.actions if isinstance(a, PressKey)] == ["9"]
+    assert not pipe.pending_land
